@@ -84,33 +84,23 @@ def pretty(obj, indent=""):
 # All the important bits!
 # -----------------------
 
-def encode(sender_private, recipient_groups, message):
+def encode(sender_private, recipients, message):
     output = io.BytesIO()
     sender_public = nacl.bindings.crypto_scalarmult_base(sender_private)
     session_key = random_key()
-    mac_keys = []
-    recipients_map = {}
-    for groupnum, group in enumerate(recipient_groups):
-        mac_key = random_key()
-        mac_keys.append(mac_key)
-        for recipient in group:
-            per_recipient_map = {
-                "session_key": session_key,
-                "mac_group": groupnum,
-                "mac_key": mac_key,
-            }
-            per_recipient_msgpack = umsgpack.packb(per_recipient_map)
-            nonce = random_nonce()
-            boxed_bytes = nacl.bindings.crypto_box(
-                message=per_recipient_msgpack,
-                nonce=nonce,
-                sk=sender_private,
-                pk=recipient)
-            recipients_map[recipient] = nonce + boxed_bytes
+    recipients_list = []
+    for recipient in recipients:
+        nonce = random_nonce()
+        boxed_session_key = nacl.bindings.crypto_box(
+            message=session_key,
+            nonce=nonce,
+            sk=sender_private,
+            pk=recipient)
+        recipients_list.append([recipient, nonce+boxed_session_key])
     header_map = {
         "version": 1,
         "sender": sender_public,
-        "recipients": recipients_map,
+        "recipients": recipients_list,
     }
     write_framed_msgpack(output, header_map)
 
@@ -123,7 +113,10 @@ def encode(sender_private, recipient_groups, message):
             nonce=nonce,
             key=session_key)
         macs = []
-        for mac_key in mac_keys:
+        for recipient in recipients:
+            mac_key = nacl.bindings.crypto_box_beforenm(
+                sk=sender_private,
+                pk=recipient)
             hmac_obj = hmac.new(mac_key, digestmod='sha512')
             hmac_obj.update(nonce)
             hmac_obj.update(boxed_chunk)
@@ -142,25 +135,29 @@ def decode(input, recipient_private):
     header_map = read_framed_msgpack(stream)
     sender_public = header_map['sender']
     recipient_public = nacl.bindings.crypto_scalarmult_base(recipient_private)
-    boxed_key_map = header_map['recipients'][recipient_public]
-    key_map_msgpack = nacl.bindings.crypto_box_open(
-        ciphertext=boxed_key_map[24:],
-        nonce=boxed_key_map[:24],
+    for recipient_num, (public, boxed_session_key) in \
+            enumerate(header_map['recipients']):
+        if public == recipient_public:
+            break
+    else:
+        raise RuntimeError("Recipient not found.")
+    session_key = nacl.bindings.crypto_box_open(
+        ciphertext=boxed_session_key[24:],
+        nonce=boxed_session_key[:24],
         sk=recipient_private,
         pk=sender_public)
-    key_map = umsgpack.unpackb(key_map_msgpack)
-    print('key map:', pretty(key_map))
-    session_key = key_map['session_key']
-    mac_key = key_map['mac_key']
-    mac_group = key_map['mac_group']
+    print('session key:', pretty(session_key))
     chunknum = 0
     output = io.BytesIO()
     while True:
         nonce = chunknum.to_bytes(24, byteorder='big')
         chunk_map = read_framed_msgpack(stream)
-        their_mac = chunk_map['macs'][mac_group]
+        their_mac = chunk_map['macs'][recipient_num]
         boxed_chunk = chunk_map['chunk']
         # Check the MAC.
+        mac_key = nacl.bindings.crypto_box_beforenm(
+            sk=recipient_private,
+            pk=sender_public)
         hmac_obj = hmac.new(mac_key, digestmod='sha512')
         hmac_obj.update(nonce)
         hmac_obj.update(boxed_chunk)
@@ -182,8 +179,8 @@ def decode(input, recipient_private):
 
 def main():
     message = b'The Magic Words are Squeamish Ossifrage'
-    output = encode(jack_private, [[max_public]], message)
-    print(base64.b64encode(output).decode())
+    output = encode(jack_private, [max_public], message)
+    print(base64.encodebytes(output).decode())
     print('-----------------------------------------')
     decoded_message = decode(output, max_private)
     print('message:', decoded_message)
