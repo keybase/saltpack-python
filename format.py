@@ -34,7 +34,7 @@ def random_nonce():
 
 def chunks_with_empty(message):
     'The last chunk is empty, which signifies the end of the message.'
-    chunk_size = 10
+    chunk_size = 100
     chunk_start = 0
     chunks = []
     while chunk_start < len(message):
@@ -182,7 +182,7 @@ def decode(input, recipient_private):
 
 def main():
     message = b'The Magic Words are Squeamish Ossifrage'
-    output = encode(jack_private, [[max_public], [chris_public]], message)
+    output = encode(jack_private, [[max_public]], message)
     print(base64.b64encode(output).decode())
     print('-----------------------------------------')
     decoded_message = decode(output, max_private)
