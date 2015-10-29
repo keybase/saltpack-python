@@ -57,8 +57,28 @@ def read_framed_msgpack(stream):
     print(length)
     # We discard the frame length and stream on.
     obj = umsgpack.unpack(stream)
-    print(obj)
+    print(pretty(obj))
     return obj
+
+
+def pretty(obj, indent=""):
+    newindent = indent + "  "
+    if isinstance(obj, bytes):
+        return repr(base64.b64encode(obj))
+    if isinstance(obj, dict):
+        out = '{\n'
+        for key, val in obj.items():
+            out += newindent + '{}: {},\n'.format(
+                pretty(key, newindent), pretty(val, newindent))
+        out += indent + '}'
+        return out
+    if isinstance(obj, list):
+        out = '[\n'
+        for val in obj:
+            out += indent + '  {},\n'.format(pretty(val, newindent))
+        out += indent + ']'
+        return out
+    return repr(obj)
 
 
 # All the important bits!
@@ -129,6 +149,7 @@ def decode(input, recipient_private):
         sk=recipient_private,
         pk=sender_public)
     key_map = umsgpack.unpackb(key_map_msgpack)
+    print('key map:', pretty(key_map))
     session_key = key_map['session_key']
     mac_key = key_map['mac_key']
     mac_group = key_map['mac_group']
