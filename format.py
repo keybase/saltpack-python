@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 
+import base64
 import hmac
 import io
 import os
@@ -8,8 +9,8 @@ import umsgpack
 import nacl.public
 import nacl.secret
 
-
-message = b"confirm: baraboo"
+# Hardcode the keys for everyone involved.
+# ----------------------------------------
 
 jack_private = nacl.public.PrivateKey(b'\xaa' * 32)
 jack_public = jack_private.public_key
@@ -20,6 +21,9 @@ max_public = max_private.public_key
 chris_private = nacl.public.PrivateKey(b'\xcc' * 32)
 chris_public = chris_private.public_key
 
+
+# Utility functions.
+# ------------------
 
 def random_key():
     return os.urandom(32)
@@ -48,6 +52,18 @@ def write_framed_msgpack(stream, obj):
     stream.write(frame)
     stream.write(msgpack_bytes)
 
+
+def read_framed_msgpack(stream):
+    length = umsgpack.unpack(stream)
+    print(length)
+    # We discard the frame length and stream on.
+    obj = umsgpack.unpack(stream)
+    print(obj)
+    return obj
+
+
+# All the important bits!
+# -----------------------
 
 def encode(sender_private, recipient_groups, message):
     output = io.BytesIO()
@@ -95,11 +111,6 @@ def encode(sender_private, recipient_groups, message):
     return output.getvalue()
 
 
-def read_framed_msgpack(stream):
-    umsgpack.unpack(stream)  # frame discarded
-    return umsgpack.unpack(stream)
-
-
 def decode(input, recipient_private):
     stream = io.BytesIO(input)
     header_map = read_framed_msgpack(stream)
@@ -134,7 +145,10 @@ def decode(input, recipient_private):
 
 
 def main():
+    message = b'The Magic Words are Squeamish Ossifrage'
     output = encode(jack_private, [[max_public], [chris_public]], message)
+    print(base64.b64encode(output).decode())
+    print('-----------------------------------------')
     decode(output, max_private)
 
 
