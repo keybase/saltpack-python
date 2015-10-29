@@ -6,20 +6,19 @@ import io
 import os
 
 import umsgpack
-import nacl.public
-import nacl.secret
+import nacl.bindings
 
 # Hardcode the keys for everyone involved.
 # ----------------------------------------
 
-jack_private = nacl.public.PrivateKey(b'\xaa' * 32)
-jack_public = jack_private.public_key
+jack_private = b'\xaa' * 32
+jack_public = nacl.bindings.crypto_scalarmult_base(jack_private)
 
-max_private = nacl.public.PrivateKey(b'\xbb' * 32)
-max_public = max_private.public_key
+max_private = b'\xbb' * 32
+max_public = nacl.bindings.crypto_scalarmult_base(max_private)
 
-chris_private = nacl.public.PrivateKey(b'\xcc' * 32)
-chris_public = chris_private.public_key
+chris_private = b'\xcc' * 32
+chris_public = nacl.bindings.crypto_scalarmult_base(chris_private)
 
 
 # Utility functions.
@@ -67,6 +66,7 @@ def read_framed_msgpack(stream):
 
 def encode(sender_private, recipient_groups, message):
     output = io.BytesIO()
+    sender_public = nacl.bindings.crypto_scalarmult_base(sender_private)
     session_key = random_key()
     mac_keys = []
     recipients_map = {}
@@ -80,22 +80,28 @@ def encode(sender_private, recipient_groups, message):
                 "mac_key": mac_key,
             }
             per_recipient_msgpack = umsgpack.packb(per_recipient_map)
-            box = nacl.public.Box(sender_private, recipient)
-            boxed_bytes = box.encrypt(per_recipient_msgpack, random_nonce())
-            recipients_map[recipient.encode()] = boxed_bytes
+            nonce = random_nonce()
+            boxed_bytes = nacl.bindings.crypto_box(
+                message=per_recipient_msgpack,
+                nonce=nonce,
+                sk=sender_private,
+                pk=recipient)
+            recipients_map[recipient] = nonce + boxed_bytes
     header_map = {
         "version": 1,
-        "sender": sender_private.public_key.encode(),
+        "sender": sender_public,
         "recipients": recipients_map,
     }
     write_framed_msgpack(output, header_map)
 
     # Write the chunks.
-    secretbox = nacl.secret.SecretBox(session_key)
     for chunknum, chunk in enumerate(chunks_with_empty(message)):
         nonce = chunknum.to_bytes(24, byteorder='big')
         # Box and strip the nonce.
-        boxed_chunk = secretbox.encrypt(chunk, nonce)[24:]
+        boxed_chunk = nacl.bindings.crypto_secretbox(
+            message=chunk,
+            nonce=nonce,
+            key=session_key)
         macs = []
         for mac_key in mac_keys:
             hmac_obj = hmac.new(mac_key, digestmod='sha512')
@@ -114,34 +120,43 @@ def encode(sender_private, recipient_groups, message):
 def decode(input, recipient_private):
     stream = io.BytesIO(input)
     header_map = read_framed_msgpack(stream)
-    sender_public = nacl.public.PublicKey(header_map['sender'])
-    recipient_public = recipient_private.public_key.encode()
-    boxed_keys = header_map['recipients'][recipient_public]
-    box = nacl.public.Box(recipient_private, sender_public)
-    key_map = umsgpack.unpackb(box.decrypt(boxed_keys))
+    sender_public = header_map['sender']
+    recipient_public = nacl.bindings.crypto_scalarmult_base(recipient_private)
+    boxed_key_map = header_map['recipients'][recipient_public]
+    key_map_msgpack = nacl.bindings.crypto_box_open(
+        ciphertext=boxed_key_map[24:],
+        nonce=boxed_key_map[:24],
+        sk=recipient_private,
+        pk=sender_public)
+    key_map = umsgpack.unpackb(key_map_msgpack)
     session_key = key_map['session_key']
     mac_key = key_map['mac_key']
     mac_group = key_map['mac_group']
-    secretbox = nacl.secret.SecretBox(session_key)
     chunknum = 0
+    output = io.BytesIO()
     while True:
         nonce = chunknum.to_bytes(24, byteorder='big')
         chunk_map = read_framed_msgpack(stream)
         their_mac = chunk_map['macs'][mac_group]
         boxed_chunk = chunk_map['chunk']
         # Check the MAC.
-        mac_obj = hmac.new(mac_key, digestmod='sha512')
-        mac_obj.update(nonce)
-        mac_obj.update(boxed_chunk)
-        our_mac = mac_obj.digest()[:32]
+        hmac_obj = hmac.new(mac_key, digestmod='sha512')
+        hmac_obj.update(nonce)
+        hmac_obj.update(boxed_chunk)
+        our_mac = hmac_obj.digest()[:32]
         if not hmac.compare_digest(their_mac, our_mac):
             raise RuntimeError("MAC mismatch!")
         # Prepend the nonce and decrypt.
-        chunk = secretbox.decrypt(nonce + boxed_chunk)
+        chunk = nacl.bindings.crypto_secretbox_open(
+            ciphertext=boxed_chunk,
+            nonce=nonce,
+            key=session_key)
         print('chunk {}: {}'.format(chunknum, chunk))
         if chunk == b'':
             break
+        output.write(chunk)
         chunknum += 1
+    return output.getvalue()
 
 
 def main():
@@ -149,7 +164,8 @@ def main():
     output = encode(jack_private, [[max_public], [chris_public]], message)
     print(base64.b64encode(output).decode())
     print('-----------------------------------------')
-    decode(output, max_private)
+    decoded_message = decode(output, max_private)
+    print('message:', decoded_message)
 
 
 if __name__ == '__main__':
