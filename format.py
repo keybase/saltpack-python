@@ -4,6 +4,7 @@ import base64
 import hmac
 import io
 import os
+import textwrap
 
 import umsgpack
 import nacl.bindings
@@ -155,7 +156,7 @@ def decode(input, recipient_private):
         sk=recipient_private,
         pk=sender_public)
     key_map = umsgpack.unpackb(key_map_msgpack)
-    print('key map:', pretty(key_map))
+    print(textwrap.indent('key map: ' + pretty(key_map), '### '))
     session_key = key_map['session_key']
     mac_key = key_map.get('mac_key')
     mac_group = key_map.get('mac_group')
@@ -179,7 +180,7 @@ def decode(input, recipient_private):
             ciphertext=boxed_chunk,
             nonce=nonce,
             key=session_key)
-        print('chunk {}: {}'.format(chunknum, chunk))
+        print('### chunk {}: {}'.format(chunknum, chunk))
         if chunk == b'':
             break
         output.write(chunk)
