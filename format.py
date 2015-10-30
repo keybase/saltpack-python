@@ -3,6 +3,7 @@
 import base64
 import hmac
 import io
+import json
 import os
 import textwrap
 
@@ -58,28 +59,24 @@ def read_framed_msgpack(stream):
     print(length)
     # We discard the frame length and stream on.
     obj = umsgpack.unpack(stream)
-    print(pretty(obj))
+    print(json_repr(obj))
     return obj
 
 
-def pretty(obj, indent=""):
-    newindent = indent + "  "
-    if isinstance(obj, bytes):
-        return repr(base64.b64encode(obj))
-    if isinstance(obj, dict):
-        out = '{\n'
-        for key, val in obj.items():
-            out += newindent + '{}: {},\n'.format(
-                pretty(key, newindent), pretty(val, newindent))
-        out += indent + '}'
-        return out
-    if isinstance(obj, list):
-        out = '[\n'
-        for val in obj:
-            out += indent + '  {},\n'.format(pretty(val, newindent))
-        out += indent + ']'
-        return out
-    return repr(obj)
+def json_repr(obj):
+    # We need to repr everything that JSON doesn't directly support,
+    # particularly bytes.
+    def _recurse_repr(obj):
+        if isinstance(obj, (list, tuple)):
+            return [_recurse_repr(x) for x in obj]
+        elif isinstance(obj, dict):
+            return {_recurse_repr(key): _recurse_repr(val)
+                    for key, val in obj.items()}
+        elif isinstance(obj, bytes):
+            return base64.b64encode(obj).decode()
+        else:
+            return obj
+    return json.dumps(_recurse_repr(obj), indent='  ')
 
 
 # All the important bits!
@@ -156,7 +153,7 @@ def decode(input, recipient_private):
         sk=recipient_private,
         pk=sender_public)
     key_map = umsgpack.unpackb(key_map_msgpack)
-    print(textwrap.indent('key map: ' + pretty(key_map), '### '))
+    print(textwrap.indent('key map: ' + json_repr(key_map), '### '))
     session_key = key_map['session_key']
     mac_key = key_map.get('mac_key')
     mac_group = key_map.get('mac_group')
