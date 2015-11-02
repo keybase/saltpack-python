@@ -1,6 +1,13 @@
 #! /usr/bin/env python3
 
+import docopt
 import math
+
+
+__doc__ = '''\
+Usage:
+    armor.py efficient <alphabet_size>
+'''
 
 
 def bytes_per_block(alphabet_size, block_size):
@@ -32,5 +39,12 @@ def print_efficient_block_sizes(alphabet_size, max_block_size):
             block_size, bytes_out, 100 * efficiency))
 
 
+def main():
+    args = docopt.docopt(__doc__)
+    if args['efficient']:
+        alphabet_size = int(args['<alphabet_size>'])
+        print_efficient_block_sizes(alphabet_size, 50)
+
+
 if __name__ == '__main__':
-    print_efficient_block_sizes(63, 100)
+    main()
