@@ -8,24 +8,29 @@ def bytes_per_block(alphabet_size, block_size):
            256 ^ bytes_per_block <= alphabet_size ^ block_size
        Taking the log_2 of both sides solves for bytes_per_block.
     '''
-    assert block_size > 1, "encoded blocks must be at least 2 characters"
     return math.floor(math.log(alphabet_size, 2) / 8 * block_size)
 
 
-def efficient_block_sizes(alphabet_size):
-    MAX_BLOCK_SIZE = 100
+def efficient_block_sizes(alphabet_size, max_block_size):
     out = []
     max_efficiency = 0
-    for block_size in range(2, MAX_BLOCK_SIZE):
+    for block_size in range(1, max_block_size):
         bytes_out = bytes_per_block(alphabet_size, block_size)
         efficiency = bytes_out / block_size
+        # This check also excludes sizes too small to encode a single byte.
         if efficiency > max_efficiency:
             out.append((block_size, bytes_out, efficiency))
             max_efficiency = efficiency
     return out
 
-alpha = 62
-print("efficient block sizes for alphabet size", alpha)
-for block_size, bytes_out, efficiency in efficient_block_sizes(alpha):
-    print("{:2d} chars: {:2d} bytes ({:.2f}%)".format(
-        block_size, bytes_out, 100 * efficiency))
+
+def print_efficient_block_sizes(alphabet_size, max_block_size):
+    print("efficient block sizes for alphabet size", alphabet_size)
+    for block_size, bytes_out, efficiency in \
+            efficient_block_sizes(alphabet_size, max_block_size):
+        print("{:2d} chars: {:2d} bytes ({:.2f}%)".format(
+            block_size, bytes_out, 100 * efficiency))
+
+
+if __name__ == '__main__':
+    print_efficient_block_sizes(63, 100)
