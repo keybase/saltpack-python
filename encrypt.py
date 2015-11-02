@@ -9,6 +9,13 @@ import textwrap
 
 import umsgpack
 import nacl.bindings
+import docopt
+
+__doc__ = '''\
+Usage:
+    encrypt.py [<message>] [--recipients=<num_recipients>]
+               [--chunk=<chunk_size>]
+'''
 
 FORMAT_VERSION = 1
 
@@ -18,19 +25,12 @@ FORMAT_VERSION = 1
 jack_private = b'\xaa' * 32
 jack_public = nacl.bindings.crypto_scalarmult_base(jack_private)
 
-max_private = b'\xbb' * 32
-max_public = nacl.bindings.crypto_scalarmult_base(max_private)
-
-chris_private = b'\xcc' * 32
-chris_public = nacl.bindings.crypto_scalarmult_base(chris_private)
-
 
 # Utility functions.
 # ------------------
 
-def chunks_with_empty(message):
+def chunks_with_empty(message, chunk_size):
     'The last chunk is empty, which signifies the end of the message.'
-    chunk_size = 100
     chunk_start = 0
     chunks = []
     while chunk_start < len(message):
@@ -76,7 +76,7 @@ def json_repr(obj):
 # All the important bits!
 # -----------------------
 
-def encode(sender_private, recipient_groups, message):
+def encrypt(sender_private, recipient_groups, message, chunk_size):
     sender_public = nacl.bindings.crypto_scalarmult_base(sender_private)
     encryption_key = os.urandom(32)
     mac_keys = []
@@ -123,7 +123,7 @@ def encode(sender_private, recipient_groups, message):
     write_framed_msgpack(output, header)
 
     # Write the chunks.
-    for chunknum, chunk in enumerate(chunks_with_empty(message)):
+    for chunknum, chunk in enumerate(chunks_with_empty(message, chunk_size)):
         nonce = chunknum.to_bytes(24, byteorder='big')
         # Box and strip the nonce.
         boxed_chunk = nacl.bindings.crypto_secretbox(
@@ -146,7 +146,7 @@ def encode(sender_private, recipient_groups, message):
     return output.getvalue()
 
 
-def decode(input, recipient_private):
+def decrypt(input, recipient_private):
     stream = io.BytesIO(input)
     # Parse the header.
     header = read_framed_msgpack(stream)
@@ -208,11 +208,23 @@ def decode(input, recipient_private):
 
 
 def main():
-    message = b'The Magic Words are Squeamish Ossifrage'
-    output = encode(jack_private, [[max_public], [chris_public]], message)
+    default_message = b'The Magic Words are Squeamish Ossifrage'
+    args = docopt.docopt(__doc__)
+    message = args['<message>']
+    if message is None:
+        encoded_message = default_message
+    else:
+        encoded_message = message.encode('utf8')
+    recipients_len = int(args.get('--recipients') or 1)
+    recipients_private = [os.urandom(32) for i in range(recipients_len)]
+    recipients_public = [nacl.bindings.crypto_scalarmult_base(r)
+                         for r in recipients_private]
+    groups = [[p] for p in recipients_public]
+    chunk_size = int(args.get('--chunk') or 100)
+    output = encrypt(jack_private, groups, encoded_message, chunk_size)
     print(base64.b64encode(output).decode())
     print('-----------------------------------------')
-    decoded_message = decode(output, max_private)
+    decoded_message = decrypt(output, recipients_private[0])
     print('message:', decoded_message)
 
 
