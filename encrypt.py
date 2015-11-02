@@ -83,7 +83,7 @@ def encode(sender_private, recipient_groups, message):
     # We will skip MACs entirely if there's only going to be one MAC key. In
     # that case, Box() gives the same guarantees.
     need_macs = (len(recipient_groups) > 1)
-    recipients_list = []
+    recipients = []
     # First 16 bytes of the recipients nonce is random. The last 8 are the
     # recipient counter.
     recipients_nonce_start = os.urandom(16)
@@ -93,33 +93,32 @@ def encode(sender_private, recipient_groups, message):
             mac_key = os.urandom(32)
             mac_keys.append(mac_key)
         for recipient in group:
-            key_list = [encryption_key]
             if need_macs:
-                key_list = [
-                    encryption_key,
-                    group_num,
-                    mac_key,
-                ]
+                keys = {
+                    "encryption_key": encryption_key,
+                    "mac_group": group_num,
+                    "mac_key": mac_key,
+                }
             else:
-                key_list = [
-                    encryption_key,
-                ]
-            packed_list = umsgpack.packb(key_list)
+                keys = {
+                    "encryption_key": encryption_key,
+                }
+            packed_keys = umsgpack.packb(keys)
             recipient_nonce = (recipients_nonce_start +
                                recipient_num.to_bytes(8, byteorder="big"))
             recipient_num += 1
-            boxed_list = nacl.bindings.crypto_box(
-                message=packed_list,
+            boxed_keys = nacl.bindings.crypto_box(
+                message=packed_keys,
                 nonce=recipient_nonce,
                 sk=sender_private,
                 pk=recipient)
-            recipients_list.append([recipient, boxed_list])
-    header = [
-        FORMAT_VERSION,
-        sender_public,
-        recipients_nonce_start,
-        recipients_list,
-    ]
+            recipients.append([recipient, boxed_keys])
+    header = {
+        "version": FORMAT_VERSION,
+        "sender": sender_public,
+        "nonce": recipients_nonce_start,
+        "recipients": recipients,
+    }
     output = io.BytesIO()
     write_framed_msgpack(output, header)
 
@@ -138,11 +137,11 @@ def encode(sender_private, recipient_groups, message):
                 hmac_obj = hmac.new(mac_key, digestmod='sha512')
                 hmac_obj.update(authenticator)
                 macs.append(hmac_obj.digest()[:32])
-        chunk_list = [
-            macs,
-            boxed_chunk,
-        ]
-        write_framed_msgpack(output, chunk_list)
+        chunk_map = {
+            "macs": macs,
+            "chunk": boxed_chunk,
+        }
+        write_framed_msgpack(output, chunk_map)
 
     return output.getvalue()
 
@@ -151,7 +150,11 @@ def decode(input, recipient_private):
     stream = io.BytesIO(input)
     # Parse the header.
     header = read_framed_msgpack(stream)
-    version, sender_public, recipients_nonce_start, recipients = header
+    version = header['version']
+    assert version == 1
+    sender_public = header['sender']
+    recipients_nonce_start = header['nonce']
+    recipients = header['recipients']
     # Find this recipient's key box.
     recipient_public = nacl.bindings.crypto_scalarmult_base(recipient_private)
     recipient_num = 0
@@ -164,28 +167,27 @@ def decode(input, recipient_private):
     # Unbox the recipient's keys.
     recipient_nonce = (recipients_nonce_start +
                        recipient_num.to_bytes(8, byteorder='big'))
-    packed_list = nacl.bindings.crypto_box_open(
+    packed_keys = nacl.bindings.crypto_box_open(
         ciphertext=boxed_keys,
         nonce=recipient_nonce,
         sk=recipient_private,
         pk=sender_public)
-    key_list = umsgpack.unpackb(packed_list)
-    if len(key_list) > 1:
-        encryption_key, group_num, mac_key = key_list
-    else:
-        encryption_key = key_list[0]
-        group_num, mac_key = None, None
-    print(textwrap.indent('key list: ' + json_repr(key_list), '### '))
+    keys = umsgpack.unpackb(packed_keys)
+    print(textwrap.indent('keys: ' + json_repr(keys), '### '))
+    encryption_key = keys['encryption_key']
+    mac_group = keys.get('mac_group')
+    mac_key = keys.get('mac_key')
     # Unbox each of the chunks.
     chunknum = 0
     output = io.BytesIO()
     while True:
         nonce = chunknum.to_bytes(24, byteorder='big')
-        chunk_list = read_framed_msgpack(stream)
-        macs, boxed_chunk = chunk_list
+        chunk_map = read_framed_msgpack(stream)
+        macs = chunk_map['macs']
+        boxed_chunk = chunk_map['chunk']
         # Check the MAC.
         if mac_key is not None:
-            their_mac = macs[group_num]
+            their_mac = macs[mac_group]
             authenticator = boxed_chunk[:16]
             hmac_obj = hmac.new(mac_key, digestmod='sha512')
             hmac_obj.update(authenticator)
@@ -207,7 +209,7 @@ def decode(input, recipient_private):
 
 def main():
     message = b'The Magic Words are Squeamish Ossifrage'
-    output = encode(jack_private, [[max_public]], message)
+    output = encode(jack_private, [[max_public], [chris_public]], message)
     print(base64.b64encode(output).decode())
     print('-----------------------------------------')
     decoded_message = decode(output, max_private)
