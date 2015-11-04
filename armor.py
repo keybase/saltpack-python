@@ -51,7 +51,50 @@ def print_efficient_chars_sizes(alphabet_size, chars_size_upper_bound):
             chars_size, bytes_size, 100 * efficiency))
 
 
-b64alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz123456789+/"
+def extra_bits(alphabet_size, chars_size, bytes_size):
+    '''In order to be compatible with Base64, when we write a partial block, we
+    need to shift as far left as we can. Figure out how many whole extra bits
+    the encoding space has relative to the bytes coming in.'''
+    total_bits = math.floor(math.log(alphabet_size, 2) * chars_size)
+    return total_bits - 8*bytes_size
+
+
+def encode_to_chars(alphabet, bytes_block):
+    # Figure out how wide the chars block needs to be, and how many extra bits
+    # we have.
+    chars_size = min_chars_size(len(alphabet), len(bytes_block))
+    extra = extra_bits(len(alphabet), chars_size, len(bytes_block))
+    # Convert the bytes into an integer, big-endian.
+    bytes_int = int.from_bytes(bytes_block, byteorder='big')
+    # Shift left by the extra bits.
+    bytes_int <<= extra
+    # Convert the result into our base.
+    places = []
+    for place in range(chars_size):
+        rem = bytes_int % len(alphabet)
+        places.insert(0, rem)
+        bytes_int //= len(alphabet)
+    return "".join(alphabet[p] for p in places)
+
+
+def decode_from_chars(alphabet, chars_block):
+    # Figure out how many bytes we have, and how many extra bits they'll have
+    # been shifted by.
+    bytes_size = max_bytes_size(len(alphabet), len(chars_block))
+    extra = extra_bits(len(alphabet), len(chars_block), bytes_size)
+    # Convert the chars to an integer.
+    bytes_int = alphabet.index(chars_block[0])
+    for c in chars_block[1:]:
+        bytes_int *= len(alphabet)
+        bytes_int += alphabet.index(c)
+    # Shift right by the extra bits.
+    bytes_int >>= extra
+    # Convert the result to bytes, big_endian.
+    return bytes_int.to_bytes(bytes_size, byteorder='big')
+
+
+b64alphabet = \
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
 
 def main():
