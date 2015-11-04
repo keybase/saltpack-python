@@ -2,11 +2,14 @@
 
 import docopt
 import math
+import sys
 
 
 __doc__ = '''\
 Usage:
     armor.py efficient <alphabet_size>
+    armor.py encode [<bytes>] [--alphabet=<chars>]
+    armor.py decode [<chars>] [--alphabet=<chars>]
 '''
 
 
@@ -99,9 +102,26 @@ b64alphabet = \
 
 def main():
     args = docopt.docopt(__doc__)
+    if args['--alphabet'] is not None:
+        alphabet = args['--alphabet']
+    else:
+        alphabet = b64alphabet
+
     if args['efficient']:
         alphabet_size = int(args['<alphabet_size>'])
         print_efficient_chars_sizes(alphabet_size, 50)
+    elif args['encode']:
+        if args['<bytes>'] is not None:
+            bytes_in = args['<bytes>'].encode()
+        else:
+            bytes_in = sys.stdin.buffer.read()
+        print(encode_to_chars(alphabet, bytes_in))
+    elif args['decode']:
+        if args['<chars>'] is not None:
+            chars_in = args['<chars>']
+        else:
+            chars_in = sys.stdin.read()
+        print(decode_from_chars(alphabet, chars_in))
 
 
 if __name__ == '__main__':
