@@ -121,7 +121,8 @@ def main():
             chars_in = args['<chars>']
         else:
             chars_in = sys.stdin.read()
-        print(decode_from_chars(alphabet, chars_in))
+        chars_in = chars_in.strip()
+        sys.stdout.buffer.write(decode_from_chars(alphabet, chars_in))
 
 
 if __name__ == '__main__':
