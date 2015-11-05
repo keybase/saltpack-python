@@ -80,16 +80,25 @@ def encode_to_chars(alphabet, bytes_block):
     return "".join(alphabet[p] for p in places)
 
 
+def get_char_index(alphabet, char):
+    'This is the same as alphabet.index(char), but with more helpful errors.'
+    try:
+        return alphabet.index(char)
+    except ValueError:
+        raise ValueError("Could not find {} in alphabet {}.".format(
+            repr(char), repr(alphabet)))
+
+
 def decode_from_chars(alphabet, chars_block):
     # Figure out how many bytes we have, and how many extra bits they'll have
     # been shifted by.
     bytes_size = max_bytes_size(len(alphabet), len(chars_block))
     extra = extra_bits(len(alphabet), len(chars_block), bytes_size)
     # Convert the chars to an integer.
-    bytes_int = alphabet.index(chars_block[0])
+    bytes_int = get_char_index(alphabet, chars_block[0])
     for c in chars_block[1:]:
         bytes_int *= len(alphabet)
-        bytes_int += alphabet.index(c)
+        bytes_int += get_char_index(alphabet, c)
     # Shift right by the extra bits.
     bytes_int >>= extra
     # Convert the result to bytes, big_endian.
