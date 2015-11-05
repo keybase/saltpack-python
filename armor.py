@@ -7,7 +7,7 @@ import sys
 
 __doc__ = '''\
 Usage:
-    armor.py efficient <alphabet_size>
+    armor.py efficient <alphabet_size> [--bound=<n>]
     armor.py encode [<bytes>] [--alphabet=<chars>]
     armor.py decode [<chars>] [--alphabet=<chars>]
 '''
@@ -108,8 +108,12 @@ def main():
         alphabet = b64alphabet
 
     if args['efficient']:
+        if args['--bound'] is None:
+            upper_bound = 50
+        else:
+            upper_bound = int(args['--bound'])
         alphabet_size = int(args['<alphabet_size>'])
-        print_efficient_chars_sizes(alphabet_size, 50)
+        print_efficient_chars_sizes(alphabet_size, upper_bound)
     elif args['encode']:
         if args['<bytes>'] is not None:
             bytes_in = args['<bytes>'].encode()
