@@ -90,7 +90,7 @@ def encrypt(sender_private, recipient_groups, message, chunk_size):
     recipient_num = 0
     for group_num, group in enumerate(recipient_groups):
         if need_macs:
-            mac_key = os.urandom(16)
+            mac_key = os.urandom(32)
             mac_keys.append(mac_key)
         for recipient in group:
             if need_macs:
@@ -136,7 +136,7 @@ def encrypt(sender_private, recipient_groups, message, chunk_size):
             for mac_key in mac_keys:
                 hmac_obj = hmac.new(mac_key, digestmod='sha512')
                 hmac_obj.update(authenticator)
-                macs.append(hmac_obj.digest()[:16])
+                macs.append(hmac_obj.digest()[:32])
         chunk_map = {
             "macs": macs,
             "chunk": boxed_chunk,
@@ -191,7 +191,7 @@ def decrypt(input, recipient_private):
             authenticator = boxed_chunk[:16]
             hmac_obj = hmac.new(mac_key, digestmod='sha512')
             hmac_obj.update(authenticator)
-            our_mac = hmac_obj.digest()[:16]
+            our_mac = hmac_obj.digest()[:32]
             if not hmac.compare_digest(their_mac, our_mac):
                 raise RuntimeError("MAC mismatch!")
         # Prepend the nonce and decrypt.
