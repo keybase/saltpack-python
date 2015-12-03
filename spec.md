@@ -2,29 +2,32 @@
 
 ## Encryption
 
-### Design goals
-We want this format to have several properties:
-- Privacy and authenticity. This is pretty standard. Mallory shouldn't be able
-  to read or modify the contents of the message. (Though Mallory can see the
-  length of the message.)
-- Repudiability. Recipients should be able to forge messages that appear to be
-  sent to them.
-- Receiver anonymity. Mallory shouldn't be able to tell who can read the
-  message. (Though Mallory can see the number of recipients.)
-- Sender anonymity. Mallory shouldn't be able to tell who wrote the message.
-- Streaming. The recipient should be able to produce decrypted bytes
-  incrementally as the message comes in, without losing authenticity. (Though
-  without reading all the way to the end, the message might end up being
+### Thinking
+Our goals for encrypted messages:
+- Message privacy and authenticity, to many recipients. Mallory can't read or
+  modify the contents of a message. (Though Mallory can see the length.)
+  - Even if Mallory is a recipient, they still can't modify the message for
+    anyone else.
+- Receiver privacy. Mallory can't tell who can read a message. (Though Mallory
+  can see the number of recipients.)
+  - Again this applies even if Mallory is a recipient.
+  - However, senders have the option of publishing the recipients. That helps
+    clients give instructions like, "To read this message, use [some other
+    device]." Note that Mallory could modify the published recipients.
+- Sender privacy. Mallory can't tell who wrote a message, even though
+  recipients see and verify the sender.
+  - Senders who want to be anonymous even to the recipients, can use an
+    ephemeral key instead of their usual public key.
+- Repudiability. Recipients can forge messages that appear to be sent to them
+  from any sender.
+- Streaming. Recipients can produce decrypted bytes incrementally as a message
+  comes in, without losing authenticity. (Though the message could be
   truncated.)
 
-A couple notes:
-- Authenticity should apply even if Mallory is one of the recipients. It
-  shouldn't be possible for one recipient to change what another recipient
-  sees.
-- Receiver anonymity is optional. With visible receivers, clients can give
-  helpful decyption instructions like, "To read this message, type in your
-  paper key 'Foo Bar'." But note that visible receivers aren't authenticated;
-  Mallory could change them.
+Our goals for the implementation:
+- Use MessagePack for all the serialization.
+- Use NaCl primitives for all the crypto: Box, SecretBox, SHA512, and
+  HMAC-SHA512.
 
 ### Format
 An encrypted message is a series of packets, each of which is parsed as a
