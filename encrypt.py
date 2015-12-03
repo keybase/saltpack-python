@@ -6,10 +6,10 @@ import hmac
 import io
 import json
 import os
-import textwrap
 
 import umsgpack
 import nacl.bindings
+from nacl.exceptions import CryptoError
 import docopt
 
 __doc__ = '''\
@@ -86,8 +86,8 @@ def encrypt(sender_private, recipient_groups, message, chunk_size):
             sender_box = nacl.bindings.crypto_box(
                 message=sender_public,
                 nonce=sender_box_nonce,
-                sk=ephemeral_private,
-                pk=recipient)
+                pk=recipient,
+                sk=ephemeral_private)
 
             # The keys box encrypts the encryption_key and the mac_key. It's
             # sent using sender_private.
@@ -102,8 +102,8 @@ def encrypt(sender_private, recipient_groups, message, chunk_size):
             keys_box = nacl.bindings.crypto_box(
                 message=keys_bytes,
                 nonce=keys_box_nonce,
-                sk=sender_private,
-                pk=recipient)
+                pk=recipient,
+                sk=sender_private)
 
             # None is for the recipient public key, which is optional.
             recipient_set = [None, sender_box, keys_box]
@@ -120,8 +120,8 @@ def encrypt(sender_private, recipient_groups, message, chunk_size):
     output.write(umsgpack.packb(header))
 
     # Write the chunks.
-    for chunknum, chunk in enumerate(chunks_with_empty(message, chunk_size)):
-        nonce = chunknum.to_bytes(24, byteorder='big')
+    for packetnum, chunk in enumerate(chunks_with_empty(message, chunk_size)):
+        nonce = packetnum.to_bytes(24, byteorder='big')
         chunk_box = nacl.bindings.crypto_secretbox(
             message=chunk,
             nonce=nonce,
@@ -148,61 +148,72 @@ def encrypt(sender_private, recipient_groups, message, chunk_size):
 def decrypt(input, recipient_private):
     stream = io.BytesIO(input)
     # Parse the header.
-    header = read_framed_msgpack(stream)
-    version = header['version']
-    assert version == 1
-    sender_public = header['sender']
-    recipients_nonce_start = header['nonce']
-    recipients = header['recipients']
-    # Find this recipient's key box.
-    recipient_public = nacl.bindings.crypto_scalarmult_base(recipient_private)
-    recipient_num = 0
-    for pub, boxed_keys in recipients:
-        if pub == recipient_public:
-            break
-        recipient_num += 1
+    header = umsgpack.unpack(stream)
+    [format_name, version, ephemeral_public, recipients] = header
+    ephemeral_hash = sha512(ephemeral_public).digest()
+    ephemeral_shared = nacl.bindings.crypto_box_beforenm(
+        pk=ephemeral_public,
+        sk=recipient_private)
+    nonce_start = ephemeral_hash[:20]
+
+    # Try decrypting each sender box, until we find the one that works.
+    for recipient_num, recipient_set in enumerate(recipients):
+        [_, sender_box, keys_box] = recipient_set
+        sender_box_counter_bytes = (2*recipient_num).to_bytes(4, 'big')
+        sender_box_nonce = nonce_start + sender_box_counter_bytes
+        try:
+            sender_public = nacl.bindings.crypto_box_open_afternm(
+                ciphertext=sender_box,
+                nonce=sender_box_nonce,
+                k=ephemeral_shared)
+        except CryptoError:
+            continue
     else:
-        raise RuntimeError('recipient key not found')
-    # Unbox the recipient's keys.
-    recipient_nonce = (recipients_nonce_start +
-                       recipient_num.to_bytes(8, byteorder='big'))
-    packed_keys = nacl.bindings.crypto_box_open(
-        ciphertext=boxed_keys,
-        nonce=recipient_nonce,
-        sk=recipient_private,
-        pk=sender_public)
-    keys = umsgpack.unpackb(packed_keys)
-    print(textwrap.indent('keys: ' + json_repr(keys), '### '))
-    encryption_key = keys['encryption_key']
-    mac_group = keys.get('mac_group')
-    mac_key = keys.get('mac_key')
-    # Unbox each of the chunks.
-    chunknum = 0
+        raise RuntimeError('Failed to find matching recipient.')
+
+    # Decrypt the keys_box using sender_public.
+    keys_box_counter_bytes = (2*recipient_num + 1).to_bytes(4, 'big')
+    keys_box_nonce = nonce_start + keys_box_counter_bytes
+    keys_bytes = nacl.bindings.crypto_box_open(
+        message=keys_box,
+        nonce=keys_box_nonce,
+        pk=sender_public,
+        sk=recipient_private)
+    keys = umsgpack.unpackb(keys_bytes)
+    [encryption_key, mac_group, mac_key] = keys
+
+    # Decrypt each of the packets.
     output = io.BytesIO()
+    packetnum = 0
     while True:
-        nonce = chunknum.to_bytes(24, byteorder='big')
-        chunk_map = read_framed_msgpack(stream)
-        macs = chunk_map['macs']
-        boxed_chunk = chunk_map['chunk']
+        packet = umsgpack.unpack(stream)
+        [macs, chunk_box] = packet
+
         # Check the MAC.
-        if mac_key is not None:
-            their_mac = macs[mac_group]
-            authenticator = boxed_chunk[:16]
-            hmac_obj = hmac.new(mac_key, digestmod='sha512')
-            hmac_obj.update(authenticator)
-            our_mac = hmac_obj.digest()[:16]
-            if not hmac.compare_digest(their_mac, our_mac):
-                raise RuntimeError("MAC mismatch!")
-        # Prepend the nonce and decrypt.
+        their_mac = macs[mac_group]
+        chunk_tag = chunk_box[:16]
+        chunk_tag_hmac = hmac.new(
+            key=mac_key,
+            msg=chunk_tag,
+            digestmod='sha512',
+            ).digest()
+        if not hmac.compare_digest(their_mac, chunk_tag_hmac):
+            raise RuntimeError("MAC mismatch!")
+
+        # Unbox the chunk.
+        nonce = packetnum.to_bytes(24, byteorder='big')
         chunk = nacl.bindings.crypto_secretbox_open(
-            ciphertext=boxed_chunk,
+            ciphertext=chunk_box,
             nonce=nonce,
             key=encryption_key)
-        print('### chunk {}: {}'.format(chunknum, chunk))
+        output.write(chunk)
+
+        # The empty chunk signifies the end of the message.
         if chunk == b'':
             break
-        output.write(chunk)
-        chunknum += 1
+
+        packetnum += 1
+
     return output.getvalue()
 
 
