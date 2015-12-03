@@ -30,8 +30,8 @@ Our goals for the implementation:
   HMAC-SHA512.
 
 ### Format
-An encrypted message is a series of packets, each of which is parsed as a
-MessagePack array:
+An encrypted message is a series of packets, each of which is a MessagePack
+array:
 - a header packet
 - any number of non-empty payload packets
 - an empty payload packet, marking the end of the message
@@ -39,13 +39,23 @@ MessagePack array:
 The contents of the header packet array are:
 - the format name string ("sillybox")
 - the format version int (1)
-- the sender ephemeral public key (32 bytes)
-- an array or recipient sets
+- an ephemeral public key (32 bytes)
+- an array of **recipient sets**
 
-Each recipient set is formatted as array:
+A **recipient set** is also an array:
 - the recipient public key (optional, either 32 bytes or null)
 - the sender box
   - encrypted with the ephemeral private key
   - contains the 32-byte public sender key
 - the keys box
-  - encrypted with the sender private key
+  - encrypted with the sender's private key
+  - contains a **key set**, as MessagePack bytes
+
+A **key set** is yet another array:
+- a 32-byte symmetric encryption key
+  - This is the same for all recipients.
+- a MAC group number
+- a 32-byte symmetric MAC key
+  - This is shared by each recipient in the same MAC group. While every
+    recipient can be in a separate MAC group, 
+- a 32-byte symm
