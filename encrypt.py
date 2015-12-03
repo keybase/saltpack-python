@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import base64
+from hashlib import sha512
 import hmac
 import io
 import json
@@ -23,7 +24,6 @@ FORMAT_VERSION = 1
 # ----------------------------------------
 
 jack_private = b'\xaa' * 32
-jack_public = nacl.bindings.crypto_scalarmult_base(jack_private)
 
 
 # Utility functions.
@@ -39,22 +39,6 @@ def chunks_with_empty(message, chunk_size):
     # empty chunk
     chunks.append(b'')
     return chunks
-
-
-def write_framed_msgpack(stream, obj):
-    msgpack_bytes = umsgpack.packb(obj)
-    frame = umsgpack.packb(len(msgpack_bytes))
-    stream.write(frame)
-    stream.write(msgpack_bytes)
-
-
-def read_framed_msgpack(stream):
-    length = umsgpack.unpack(stream)
-    print(length)
-    # We discard the frame length and stream on.
-    obj = umsgpack.unpack(stream)
-    print(json_repr(obj))
-    return obj
 
 
 def json_repr(obj):
@@ -78,70 +62,85 @@ def json_repr(obj):
 
 def encrypt(sender_private, recipient_groups, message, chunk_size):
     sender_public = nacl.bindings.crypto_scalarmult_base(sender_private)
+    ephemeral_private = os.urandom(32)
+    ephemeral_public = nacl.bindings.crypto_scalarmult_base(ephemeral_private)
+    ephemeral_hash = sha512(ephemeral_public).digest()
+    # The NaCl nonce is 24 bytes. We room for a 4 byte counter.
+    nonce_start = ephemeral_hash[:20]
     encryption_key = os.urandom(32)
     mac_keys = []
-    # We will skip MACs entirely if there's only going to be one MAC key. In
-    # that case, Box() gives the same guarantees.
-    need_macs = (len(recipient_groups) > 1)
-    recipients = []
-    # First 16 bytes of the recipients nonce is random. The last 8 are the
-    # recipient counter.
-    recipients_nonce_start = os.urandom(16)
     recipient_num = 0
+    recipient_sets = []
+
+    # Populate all the recipient sets.
     for group_num, group in enumerate(recipient_groups):
-        if need_macs:
-            mac_key = os.urandom(32)
-            mac_keys.append(mac_key)
+        # The mac_key will be used to authenticate the payload packets for
+        # everyone in this recipient group.
+        mac_key = os.urandom(32)
+        mac_keys.append(mac_key)
         for recipient in group:
-            if need_macs:
-                keys = {
-                    "encryption_key": encryption_key,
-                    "mac_group": group_num,
-                    "mac_key": mac_key,
-                }
-            else:
-                keys = {
-                    "encryption_key": encryption_key,
-                }
-            packed_keys = umsgpack.packb(keys)
-            recipient_nonce = (recipients_nonce_start +
-                               recipient_num.to_bytes(8, byteorder="big"))
-            recipient_num += 1
-            boxed_keys = nacl.bindings.crypto_box(
-                message=packed_keys,
-                nonce=recipient_nonce,
+            # The sender box encrypts the real sender's public key. It's sent
+            # using ephemeral_private.
+            sender_box_counter_bytes = (2*recipient_num).to_bytes(4, 'big')
+            sender_box_nonce = nonce_start + sender_box_counter_bytes
+            sender_box = nacl.bindings.crypto_box(
+                message=sender_public,
+                nonce=sender_box_nonce,
+                sk=ephemeral_private,
+                pk=recipient)
+
+            # The keys box encrypts the encryption_key and the mac_key. It's
+            # sent using sender_private.
+            keys = [
+                encryption_key,
+                group_num,  # TODO: xor this with something
+                mac_key,
+            ]
+            keys_bytes = umsgpack.packb(keys)
+            keys_box_counter_bytes = (2*recipient_num + 1).to_bytes(4, 'big')
+            keys_box_nonce = nonce_start + keys_box_counter_bytes
+            keys_box = nacl.bindings.crypto_box(
+                message=keys_bytes,
+                nonce=keys_box_nonce,
                 sk=sender_private,
                 pk=recipient)
-            recipients.append([recipient, boxed_keys])
-    header = {
-        "version": FORMAT_VERSION,
-        "sender": sender_public,
-        "nonce": recipients_nonce_start,
-        "recipients": recipients,
-    }
+
+            # None is for the recipient public key, which is optional.
+            recipient_set = [None, sender_box, keys_box]
+            recipient_sets.append(recipient_set)
+            recipient_num += 1
+
+    header = [
+        "sillybox",  # format name
+        1,           # version
+        ephemeral_public,
+        recipient_sets,
+    ]
     output = io.BytesIO()
-    write_framed_msgpack(output, header)
+    output.write(umsgpack.packb(header))
 
     # Write the chunks.
     for chunknum, chunk in enumerate(chunks_with_empty(message, chunk_size)):
         nonce = chunknum.to_bytes(24, byteorder='big')
-        # Box and strip the nonce.
-        boxed_chunk = nacl.bindings.crypto_secretbox(
+        chunk_box = nacl.bindings.crypto_secretbox(
             message=chunk,
             nonce=nonce,
             key=encryption_key)
+        chunk_tag = chunk_box[:16]  # the Poly1305 authenticator
         macs = []
-        if need_macs:
-            authenticator = boxed_chunk[:16]
-            for mac_key in mac_keys:
-                hmac_obj = hmac.new(mac_key, digestmod='sha512')
-                hmac_obj.update(authenticator)
-                macs.append(hmac_obj.digest()[:32])
-        chunk_map = {
-            "macs": macs,
-            "chunk": boxed_chunk,
-        }
-        write_framed_msgpack(output, chunk_map)
+        for mac_key in mac_keys:
+            chunk_tag_hmac = hmac.new(
+                key=mac_key,
+                msg=chunk_tag,
+                digestmod='sha512',
+                ).digest()
+            # Only take the first 32 bytes of HMAC-SHA512, as NaCl does.
+            macs.append(chunk_tag_hmac[:32])
+        packet = [
+            macs,
+            chunk_box,
+        ]
+        output.write(umsgpack.packb(packet))
 
     return output.getvalue()
 
@@ -191,7 +190,7 @@ def decrypt(input, recipient_private):
             authenticator = boxed_chunk[:16]
             hmac_obj = hmac.new(mac_key, digestmod='sha512')
             hmac_obj.update(authenticator)
-            our_mac = hmac_obj.digest()[:32]
+            our_mac = hmac_obj.digest()[:16]
             if not hmac.compare_digest(their_mac, our_mac):
                 raise RuntimeError("MAC mismatch!")
         # Prepend the nonce and decrypt.
