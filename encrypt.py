@@ -129,13 +129,13 @@ def encrypt(sender_private, recipient_groups, message, chunk_size):
         chunk_tag = chunk_box[:16]  # the Poly1305 authenticator
         macs = []
         for mac_key in mac_keys:
+            # Only take the first 32 bytes of HMAC-SHA512, as NaCl does.
             chunk_tag_hmac = hmac.new(
                 key=mac_key,
-                msg=chunk_tag,
+                msg=chunk_tag,  # TODO: mix in the packet number?
                 digestmod='sha512',
-                ).digest()
-            # Only take the first 32 bytes of HMAC-SHA512, as NaCl does.
-            macs.append(chunk_tag_hmac[:32])
+                ).digest()[:32]
+            macs.append(chunk_tag_hmac)
         packet = [
             macs,
             chunk_box,
@@ -149,6 +149,8 @@ def decrypt(input, recipient_private):
     stream = io.BytesIO(input)
     # Parse the header.
     header = umsgpack.unpack(stream)
+    print('Header: ', end='')
+    print(json_repr(header))
     [format_name, version, ephemeral_public, recipients] = header
     ephemeral_hash = sha512(ephemeral_public).digest()
     ephemeral_shared = nacl.bindings.crypto_box_beforenm(
@@ -166,6 +168,7 @@ def decrypt(input, recipient_private):
                 ciphertext=sender_box,
                 nonce=sender_box_nonce,
                 k=ephemeral_shared)
+            break
         except CryptoError:
             continue
     else:
@@ -175,11 +178,13 @@ def decrypt(input, recipient_private):
     keys_box_counter_bytes = (2*recipient_num + 1).to_bytes(4, 'big')
     keys_box_nonce = nonce_start + keys_box_counter_bytes
     keys_bytes = nacl.bindings.crypto_box_open(
-        message=keys_box,
+        ciphertext=keys_box,
         nonce=keys_box_nonce,
         pk=sender_public,
         sk=recipient_private)
     keys = umsgpack.unpackb(keys_bytes)
+    print('Keys: ', end='')
+    print(json_repr(keys))
     [encryption_key, mac_group, mac_key] = keys
 
     # Decrypt each of the packets.
@@ -187,6 +192,8 @@ def decrypt(input, recipient_private):
     packetnum = 0
     while True:
         packet = umsgpack.unpack(stream)
+        print('Packet: ', end='')
+        print(json_repr(packet))
         [macs, chunk_box] = packet
 
         # Check the MAC.
@@ -196,7 +203,7 @@ def decrypt(input, recipient_private):
             key=mac_key,
             msg=chunk_tag,
             digestmod='sha512',
-            ).digest()
+            ).digest()[:32]
         if not hmac.compare_digest(their_mac, chunk_tag_hmac):
             raise RuntimeError("MAC mismatch!")
 
@@ -207,6 +214,7 @@ def decrypt(input, recipient_private):
             nonce=nonce,
             key=encryption_key)
         output.write(chunk)
+        print('Chunk:', chunk)
 
         # The empty chunk signifies the end of the message.
         if chunk == b'':
