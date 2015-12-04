@@ -32,6 +32,7 @@ Our goals for the implementation:
 ### Format
 An encrypted message is a series of MessagePack objects:
 - a constant string ("sillybox" or "keybase_magic_cookie" or something)
+- 
 - a header packet
 - any number of non-empty payload packets
 - an empty payload packet, marking the end of the message
@@ -180,3 +181,14 @@ is a MessagePack array:
   afafaf...  # detached sig of SHA512 of payload
              # TODO: Should there be extra constants in this hash?
 ]
+
+
+# TODO
+think about take over attacks
+- never sign anything we didn't generate
+- how can we be careful about what we decrypt?
+
+can we get a constant file prefix?
+- what does `file` do?
+
+use Major.Minor versioning (Fred's idea)
