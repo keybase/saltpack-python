@@ -6,7 +6,7 @@
 Our goals for encrypted messages:
 - Message privacy and authenticity, to many recipients. Mallory can't read or
   modify the contents of a message. (Though Mallory can see the length.)
-  - Even if Mallory is a recipient, they still can't modify the message for
+  - Even if Mallory is a recipient, she still can't modify the message for
     anyone else.
 - Receiver privacy. Mallory can't tell who can read a message. (Though Mallory
   can see the number of recipients.)
@@ -15,7 +15,7 @@ Our goals for encrypted messages:
     clients give instructions like, "To read this message, use [some other
     device]." Note that Mallory could modify the published recipients.
 - Sender privacy. Mallory can't tell who wrote a message, even though
-  recipients see and verify the sender.
+  recipients can see and verify the sender.
   - Senders who want to be anonymous even to the recipients, can use an
     ephemeral key instead of their usual public key.
 - Repudiability. Recipients can forge messages that appear to be sent to them
@@ -39,6 +39,7 @@ array:
 The contents of the header packet array are:
 - the format name string ("sillybox")
 - the format version int (1)
+- the mode (encryption, or attached/detached signing)
 - an ephemeral public key (32 bytes)
 - an array of **recipient sets**
 
@@ -120,3 +121,46 @@ A message with one recipient.
 # chunk 1 (decrypted)
 ''
 ```
+
+## Signing
+
+### Format
+Similar to encryption. A signed message is a series of packets, each of which
+is a MessagePack array:
+- a header packet
+- any number of non-empty payload packets
+- an empty payload packet, marking the end of the message
+
+
+### Attached
+[
+  "sillybox"
+  1          # version
+  1          # mode (attached signing)
+  abc123...  # signer pk
+]
+[
+  def456...  # first ephemeral pk case, signed by signer
+             # TODO: Should there be extra constants in this case?
+  c2c2c2...  # payload case, signed by first ephemeral
+]
+...
+[
+  dadada...  # next ephemeral pk case, signed by previous
+  c2c2c2...  # next payload case, signed by current
+]
+[
+  5b5b5b...  # final ephemeral pk case, signed by previous
+  929292...  # empty case, signed by current
+]
+
+
+### Detached
+[
+  "sillybox"
+  1          # version
+  2          # mode (detached signing)
+  5d5d5d...  # sender
+  afafaf...  # detached sig of SHA512 of payload
+             # TODO: Should there be extra constants in this hash?
+]
