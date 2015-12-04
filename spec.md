@@ -76,6 +76,8 @@ The contents of a payload packet array are:
 - The packet contents, a MessagePack bin object. The maximum size of a bin
   object is about 4GB, but our default size will be 1MB.
 
+An empty chunk signifies the end of the message.
+
 ## Example
 A message with one recipient.
 ```
@@ -133,6 +135,26 @@ is a MessagePack array:
 - any number of non-empty payload packets
 - an empty payload packet, marking the end of the message
 
+The contents of the header packet are:
+- the format name
+- the version
+- the mode number (attached/detached signing, or encryption)
+- the signing public key
+
+In detached mode, there is no payload, and the header contains an extra field:
+- the detached NaCl sig of the SHA512 of the message
+- TODO: concatenated with some other stuff?!
+
+In attached mode, as in encryption mode, the header is followed by a number of
+payload packets. Each payload packet contains:
+- an attached NaCl sig of an ephemeral signing public key
+  - signed by the sender for the first packet, or the previous ephemeral key
+    for subsequent packets
+  - TODO: concatenated with some other stuff?!
+- an attached NaCl sig of the message chunk
+  - signed by the ephemeral key above
+
+An empty chunk signifies the end of the message.
 
 ### Attached
 [
