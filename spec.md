@@ -30,8 +30,8 @@ Our goals for the implementation:
   HMAC-SHA512.
 
 ### Format
-An encrypted message is a series of packets, each of which is a MessagePack
-array:
+An encrypted message is a series of MessagePack objects:
+- a constant string ("sillybox" or "keybase_magic_cookie" or something)
 - a header packet
 - any number of non-empty payload packets
 - an empty payload packet, marking the end of the message
@@ -82,6 +82,7 @@ A message with one recipient.
 [
   "sillybox",
   1,
+  0,
   b"f5LbalfieMFlFalEPq2nYJi0InXd2TZRv/JDpMSCZCs=",
   [
     [
@@ -140,19 +141,34 @@ is a MessagePack array:
   abc123...  # signer pk
 ]
 [
-  def456...  # first ephemeral pk case, signed by signer
-             # TODO: Should there be extra constants in this case?
-  c2c2c2...  # payload case, signed by first ephemeral
+  def456...  # first ephemeral pk carton, signed by signer
+             # TODO: Should there be extra constants in this carton?
+  c2c2c2...  # payload carton, signed by first ephemeral
 ]
 ...
 [
-  dadada...  # next ephemeral pk case, signed by previous
-  c2c2c2...  # next payload case, signed by current
+  dadada...  # next ephemeral pk carton, signed by previous
+  c2c2c2...  # next payload carton, signed by current
 ]
 [
-  5b5b5b...  # final ephemeral pk case, signed by previous
-  929292...  # empty case, signed by current
+  5b5b5b...  # final ephemeral pk carton, signed by previous
+  929292...  # empty carton, signed by current
 ]
+
+
+
+[
+  "sillybox"
+  1          # version
+  1          # mode (attached signing)
+  abc123...  # signer pk
+  Sig[signer](ephemeral_pk + SILLYBOX_SUFFIX)
+]
+
+[
+  Sig[ephemeral](chunk + 64_bit_seqno)
+]
+
 
 
 ### Detached
