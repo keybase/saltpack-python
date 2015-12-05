@@ -31,15 +31,14 @@ Our goals for the implementation:
 
 ### Format
 An encrypted message is a series of MessagePack objects:
-- a constant string ("sillybox" or "keybase_magic_cookie" or something)
-- 
 - a header packet
 - any number of non-empty payload packets
 - an empty payload packet, marking the end of the message
 
 The contents of the header packet array are:
 - the format name string ("sillybox")
-- the format version int (1)
+- the major version (1)
+- the minor version (0)
 - the mode (encryption, or attached/detached signing)
 - an ephemeral public key (32 bytes)
 - an array of **recipient sets**
@@ -85,6 +84,7 @@ A message with one recipient.
 [
   "sillybox",
   1,
+  0,
   0,
   b"f5LbalfieMFlFalEPq2nYJi0InXd2TZRv/JDpMSCZCs=",
   [
@@ -137,8 +137,9 @@ is a MessagePack array:
 
 The contents of the header packet are:
 - the format name
-- the version
-- the mode number (attached/detached signing, or encryption)
+- the major version (1)
+- the minor version (0)
+- the mode number
 - the signing public key
 
 In detached mode, there is no payload, and the header contains an extra field:

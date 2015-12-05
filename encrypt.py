@@ -112,7 +112,8 @@ def encrypt(sender_private, recipient_groups, message, chunk_size):
 
     header = [
         "sillybox",  # format name
-        1,           # version
+        1,           # major version
+        0,           # minor version
         0,           # mode (encryption, as opposed to signing/detached)
         ephemeral_public,
         recipient_sets,
@@ -152,7 +153,14 @@ def decrypt(input, recipient_private):
     header = umsgpack.unpack(stream)
     print('Header: ', end='')
     print(json_repr(header))
-    [format_name, version, mode, ephemeral_public, recipients] = header
+    [
+        format_name,
+        major_version,
+        minor_version,
+        mode,
+        ephemeral_public,
+        recipients,
+    ] = header
     ephemeral_hash = sha512(ephemeral_public).digest()
     ephemeral_shared = nacl.bindings.crypto_box_beforenm(
         pk=ephemeral_public,
