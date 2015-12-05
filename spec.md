@@ -211,6 +211,10 @@ think about take over attacks
 - never sign anything we didn't generate
 - how can we be careful about what we decrypt?
 
+Nonce:
+  - for the sender box: "FIXED_PREFIX" + receiver_index
+  - for the keys box: hash(another_prefix+ephemeral) + receiver_index
+
 can we get a constant file prefix?
 - what does `file` do?
 
