@@ -124,8 +124,8 @@ If Mallory intercepted one of these, she could assemble a fake Sillybox message
 that contained the intercepted box, in the hope that Bob might reveal something
 about its contents by decrypting it. The `P` prefix makes this attack
 difficult, because the only way Mallory can select it is by hashing 2^160
-ephemeral keys. Bob will never decrypt the intercepted message, because the
-nonce won't match.
+ephemeral keys. Bob will never decrypt the fake message, because the nonce
+won't match.
 
 Some applications might use the Sillybox format, but don't want decryption
 compatibility with other Sillybox applications. In addition to changing the
