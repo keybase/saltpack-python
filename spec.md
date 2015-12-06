@@ -77,7 +77,7 @@ it contains a MessagePack array with several values:
 [
   # symmetric encryption key (NaCl crypto_secretbox key, 256 bits)
   b"4a4a4a...",
-  # MAC group (a 32-bit signed int, serialized to 4 bytes)
+  # MAC group (a 32-bit signed int, serialized to 4 bytes, to ensure constant size)
   b"00000000",
   # MAC key (NaCl crypto_auth key, 256 bits)
   b"2b2b2b...",
