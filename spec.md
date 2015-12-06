@@ -9,8 +9,8 @@ NaCl boxes have several properties that we want to keep:
 
 Building on what NaCl gives us, there are several other properties we want:
 - Multiple recipients.
-- Streaming. We want to be able to decrypt any size message without needing to
-  fit the whole thing in RAM.
+- Streaming. We want to be able to decrypt a message of any size without
+  needing to fit the whole thing in RAM.
 - Abuse resistance. Alice might use the same encryption key for many
   applications besides Sillybox. Mallory might try to trick Alice into
   decrypting ciphertexts from other applications, by formatting them as part of
