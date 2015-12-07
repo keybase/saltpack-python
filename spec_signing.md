@@ -4,7 +4,8 @@
 As with the encryption format, we want our signing format to have several
 properties on top of a plain NaCl signature:
 - Streaming. We want to be able to verify a message of any size, without
-  fitting the whole thing in RAM, and without requiring a second pass.
+  fitting the whole thing in RAM, and without requiring a second pass to output
+  attached plaintext.
 - Abuse resistance. Alice might use the same signing key for many applications
   besides Sillybox. Mallory might [try to
   trick](https://blog.sandstorm.io/news/2015-05-01-is-that-ascii-or-protobuf.html)
