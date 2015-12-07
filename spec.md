@@ -53,6 +53,15 @@ size for each payload is 1MB.
 ]
 ```
 
+The first field of each recipient set may be null, or it may contain the public
+key of that recipient. This removes the anonymity of the recipients, but it
+allows applications to show helpful instructions like "To read this message,
+use Device Foo." Note that published recipients aren't authenticated, so
+applications should only use them as a hint. When there are anonymous
+recipients, decryption implementations should compute the `crypto_box_beforenm`
+shared secret once using the ephemeral public key, and then attempt to open
+each sender key box.
+
 An encryption payload is a MessagePack object shaped like this:
 
 ```yaml
