@@ -113,10 +113,14 @@ also the nonce for the payload box, see below.
 
 ### Nonces
 
-All NaCl nonces are 24 bytes. For the recipient boxes, define the pre-nonce `P`
-to be the first 20 bytes of SHA512(SOME_NULL_TERMINATED_CONSTANT_TODO + the
-ephemeral sender public key). Also define `R` to be the index of the recipient
-in question, in the recipients list.
+All NaCl nonces are 24 bytes. Define the pre-nonce `P` to be the first 20 bytes
+of the SHA512 of the concatenation of these values:
+- SOME_NULL_TERMINATED_CONSTANT_TODO
+- b"NONCE\0"
+- the ephemeral public key
+
+Also define `R` to be the index of the recipient in question, in the recipients
+list.
 
 The nonce for each sender key box is `P` concatenated with the 4-byte
 big-endian unsigned representation of `2*R`.
