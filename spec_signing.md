@@ -19,7 +19,8 @@ We define two signing formats, one attached and one detached.
 
 An attached signature is a header packet, followed by any number of non-empty
 payload packets, followed by an empty payload packet. The default max size for
-each payload is 1MB.
+each payload is 1MB. An attached signing header packet is a MessagePack array
+that looks like this:
 
 ```yaml
 # attached signing header object
@@ -41,7 +42,7 @@ each payload is 1MB.
 ]
 ```
 
-A signing payload is a MessagePack object shaped like this:
+An attached signing payload packet is a MessagePack array that looks like this:
 
 ```yaml
 # attached signing payload object

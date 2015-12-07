@@ -22,7 +22,8 @@ Building on what NaCl gives us, there are several other properties we want:
 
 An encrypted message is an encryption header packet, followed by any number of
 non-empty payload packets, followed by an empty payload packet. The default max
-size for each payload is 1MB.
+size for each payload is 1MB. An encryption header packet is a MessagePack
+array that looks like this:
 
 ```yaml
 # encryption header object
@@ -62,7 +63,7 @@ recipients, decryption implementations should compute the `crypto_box_beforenm`
 shared secret once using the ephemeral public key, and then attempt to open
 each sender key box.
 
-An encryption payload is a MessagePack object shaped like this:
+An encryption payload packet is a MessagePack array that looks like this:
 
 ```yaml
 [
