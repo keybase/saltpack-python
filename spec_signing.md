@@ -23,7 +23,7 @@ each payload is 1MB. An attached signing header packet is a MessagePack array
 that looks like this:
 
 ```yaml
-# attached signing header object
+# attached signing header packet
 [
   # format name
   "sillybox",
@@ -45,7 +45,7 @@ that looks like this:
 An attached signing payload packet is a MessagePack array that looks like this:
 
 ```yaml
-# attached signing payload object
+# attached signing payload packet
 [
   # payload signature (NaCl crypto_sign, detached, 64 bytes)
   b"e3e3e3...",
@@ -80,11 +80,12 @@ different value for SOME_NULL_TERMINATED_CONSTANT_TODO.
 
 ### Detached
 
-A detached signature is similar to an attached signature, but there are no
-payload packets, and there's an extra signature in the header.
+A detached signature is one packet, similar to the header of an attached
+signature. There are no payload packets, and there's an extra signature in the
+header.
 
 ```yaml
-# detached signing object
+# detached signing packet
 [
   # format name
   "sillybox",

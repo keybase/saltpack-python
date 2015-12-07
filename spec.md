@@ -26,7 +26,7 @@ size for each payload is 1MB. An encryption header packet is a MessagePack
 array that looks like this:
 
 ```yaml
-# encryption header object
+# encryption header packet
 [
   # format name
   "sillybox",
@@ -66,6 +66,7 @@ each sender key box.
 An encryption payload packet is a MessagePack array that looks like this:
 
 ```yaml
+# encryption payload packet
 [
   # list of MACs (NaCl crypto_auth, 32 bytes)
   [
@@ -86,6 +87,7 @@ with the sender's long-term private key and each recipient's public key, and
 it contains a MessagePack array with several values:
 
 ```yaml
+# message keys
 [
   # symmetric encryption key (NaCl crypto_secretbox key, 32 bytes)
   b"4a4a4a...",
