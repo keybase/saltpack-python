@@ -12,9 +12,11 @@ Building on what NaCl gives us, there are several other properties we want:
 - Streaming. We want to be able to decrypt a message of any size without
   needing to fit the whole thing in RAM.
 - Abuse resistance. Alice might use the same encryption key for many
-  applications besides Sillybox. Mallory might try to trick Alice into
-  decrypting ciphertexts from other applications, by formatting them as part of
-  a Sillybox message. Alice shouldn't be able to decrypt these messages at all.
+  applications besides Sillybox. Mallory might [try to
+  trick](https://blog.sandstorm.io/news/2015-05-01-is-that-ascii-or-protobuf.html)
+  Alice into decrypting ciphertexts from other applications, by formatting them
+  as part of a Sillybox message. Alice shouldn't be able to decrypt these
+  messages at all.
 
 ## Format
 
@@ -33,13 +35,13 @@ size for each payload is 1MB.
   0,
   # mode (0 = encryption)
   0,
-  # ephemeral sender public key (NaCl crypto_box key, 256 bits)
+  # ephemeral sender public key (NaCl crypto_box key, 32 bytes)
   b"ababab...",
   # recipients list
   [
     # set of boxes for a single recipient
     [
-      # recipient key (NaCl crypto_box key, 256 bits, or null)
+      # recipient key (NaCl crypto_box key, 32 bytes, or null)
       b"d3d3d3..."
       # encrypted sender key box (NaCl crypto_box)
       b"a2a2a2..."
@@ -55,7 +57,7 @@ An encryption payload is a MessagePack object shaped like this:
 
 ```yaml
 [
-  # list of MACs (NaCl crypto_auth, 256 bits)
+  # list of MACs (NaCl crypto_auth, 32 bytes)
   [
     b"e6e6e6...",
     # additional MACs...
@@ -69,17 +71,17 @@ When encrypting a message, the sender generates a random ephemeral keypair. The
 ephemeral public key goes directly in the header above. The sender key box for
 each recipient is encrypted with the ephemeral private key and the recipient's
 public key, and it contains contain the sender's long-term public key (NaCl
-crypto_box key, 256 bits). The message keys box for each recipient is encrypted
+crypto_box key, 32 bytes). The message keys box for each recipient is encrypted
 with the sender's long-term private key and each recipient's public key, and
 it contains a MessagePack array with several values:
 
 ```yaml
 [
-  # symmetric encryption key (NaCl crypto_secretbox key, 256 bits)
+  # symmetric encryption key (NaCl crypto_secretbox key, 32 bytes)
   b"4a4a4a...",
-  # MAC group (a 32-bit signed int, serialized to 4 bytes, to ensure constant size)
+  # MAC group (a 32-bit big-endian signed int, as 4 bytes, to ensure constant size)
   b"00000000",
-  # MAC key (NaCl crypto_auth key, 256 bits)
+  # MAC key (NaCl crypto_auth key, 32 bytes)
   b"2b2b2b...",
 ]
 ```
@@ -94,23 +96,23 @@ device, to save space when recipients have many devices.
 
 The MACs are computed over the first 16 bytes of each payload box (the Poly1305
 authenticator) concatenated with the packet number. The packet number is a
-192-bit big-endian uint, where the first payload packet is zero. This value is
+24-byte big-endian uint, where the first payload packet is zero. This value is
 also the nonce for the payload box, see below.
 
 ### Nonces
 
-All NaCl nonces are 192 bits. For the recipient boxes, define the pre-nonce `P`
-to be the first 160 bits of SHA512(SOME_NULL_TERMINATED_CONSTANT_TODO + the
+All NaCl nonces are 24 bytes. For the recipient boxes, define the pre-nonce `P`
+to be the first 20 bytes of SHA512(SOME_NULL_TERMINATED_CONSTANT_TODO + the
 ephemeral sender public key). Also define `R` to be the index of the recipient
 in question, in the recipients list.
 
-The nonce for each sender key box is `P` concatenated with the 32-bit
+The nonce for each sender key box is `P` concatenated with the 4-byte
 big-endian unsigned representation of `2*R`.
 
-The nonce for each message keys box is `P` concatenated with the 32-bit
+The nonce for each message keys box is `P` concatenated with the 4-byte
 big-endian unsigned representation of `2*R + 1`.
 
-The nonce for each payload box is the 192-bit big-endian unsigned
+The nonce for each payload box is the 24-byte big-endian unsigned
 representation of the packet number, where the first payload packet is number
 0. We don't use `P` here.
 
