@@ -59,19 +59,22 @@ keypair. The ephemeral public key goes in the header above, and the ephemeral
 private key is used to sign payloads.
 
 The delegation signature is made with the sender's long-term signing key. The
-signed text is SOME_NULL_TERMINATED_CONSTANT_TODO concatenated with the
-ephemeral public key. Note that this text doesn't contain any bytes that an
-attacker could control. This should keep Mallory from tricking Alice into
-making signatures with her long-term key that might be meaningful to another
-application.
+signed text is the concatenation of these values:
+- SOME_NULL_TERMINATED_CONSTANT_TODO
+- b"DELEGATION\0"
+- the ephemeral public signing key
+
+Note that this text doesn't contain any bytes that an attacker could control.
+This should keep Mallory from tricking Alice into making signatures with her
+long-term key that might be meaningful to another application.
 
 Payload signatures are made with the ephemeral signing key. The signed text is
 the concatenation of these values:
 - SOME_NULL_TERMINATED_CONSTANT_TODO
 - b"ATTACHED\0"
-- The packet number as an 8-byte big-endian uint, where the first payload
-  packet is zero.
-- The SHA512 of the payload bytes.
+- the packet number as an 8-byte big-endian uint, where the first payload
+  packet is zero
+- the SHA512 of the payload bytes
 
 Some applications might use the Sillybox format, but don't want signature
 compatibility with other Sillybox applications. In addition to changing the
