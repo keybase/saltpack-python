@@ -54,7 +54,7 @@ An attached signing payload packet is a MessagePack array that looks like this:
 ]
 ```
 
-When signing a message, the sender generates a random ephemeral singing
+When signing a message, the sender generates a random ephemeral signing
 keypair. The ephemeral public key goes in the header above, and the ephemeral
 private key is used to sign payloads.
 
