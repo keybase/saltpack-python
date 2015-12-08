@@ -8,8 +8,8 @@ import sys
 __doc__ = '''\
 Usage:
     armor.py efficient <alphabet_size> [--bound=<n>]
-    armor.py encode [<bytes>] [--alphabet=<chars>]
-    armor.py decode [<chars>] [--alphabet=<chars>]
+    armor.py encode [--alphabet=<str> | --base64] [--block=<n>] [<bytes>]
+    armor.py decode [--alphabet=<str> | --base64] [--block=<n>] [<chars>]
 '''
 
 
@@ -105,8 +105,38 @@ def decode_from_chars(alphabet, chars_block):
     return bytes_int.to_bytes(bytes_size, byteorder='big')
 
 
+def chunk_bytes(b, size):
+    assert size > 0
+    chunks = []
+    i = 0
+    while i < len(b):
+        chunks.append(b[i:i+size])
+        i += size
+    return chunks
+
+
+def chunk_string(s, size):
+    'Skip over whitespace when assembling chunks.'
+    assert size > 1
+    chunks = []
+    chunk = ''
+    for c in s:
+        if c.isspace():
+            continue
+        chunk += c
+        if len(chunk) == size:
+            chunks.append(chunk)
+            chunk = ''
+    if chunk:
+        chunks.append(chunk)
+    return chunks
+
+
 b64alphabet = \
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+b62alphabet = \
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 
 def main():
@@ -114,6 +144,8 @@ def main():
     if args['--alphabet'] is not None:
         alphabet = args['--alphabet']
     else:
+        alphabet = b62alphabet
+    if args['--base64']:
         alphabet = b64alphabet
 
     if args['efficient']:
@@ -128,14 +160,28 @@ def main():
             bytes_in = args['<bytes>'].encode()
         else:
             bytes_in = sys.stdin.buffer.read()
-        print(encode_to_chars(alphabet, bytes_in))
+        if args['--block'] is not None:
+            block_size = int(args['--block'])
+        elif args['--base64']:
+            block_size = 3
+        else:
+            block_size = 32
+        chunks = chunk_bytes(bytes_in, block_size)
+        print(' '.join(encode_to_chars(alphabet, chunk) for chunk in chunks))
     elif args['decode']:
         if args['<chars>'] is not None:
             chars_in = args['<chars>']
         else:
             chars_in = sys.stdin.read()
-        chars_in = chars_in.strip()
-        sys.stdout.buffer.write(decode_from_chars(alphabet, chars_in))
+        if args['--block'] is not None:
+            block_size = int(args['--block'])
+        elif args['--base64']:
+            block_size = 4
+        else:
+            block_size = 43
+        chunks = chunk_string(chars_in, block_size)
+        for chunk in chunks:
+            sys.stdout.buffer.write(decode_from_chars(alphabet, chunk))
 
 
 if __name__ == '__main__':
