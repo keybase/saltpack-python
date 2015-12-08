@@ -10,7 +10,16 @@ Usage:
     armor.py efficient <alphabet_size> [--bound=<n>]
     armor.py encode [--alphabet=<str>] [--base64] [--block=<n>] [<bytes>]
     armor.py decode [--alphabet=<str>] [--base64] [--block=<n>] [<chars>]
+    armor.py armor [--alphabet=<str>] [--base64] [--block=<n>] [<bytes>]
+    armor.py dearmor [--alphabet=<str>] [--base64] [--block=<n>] [<chars>]
 '''
+
+
+b64alphabet = \
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+b62alphabet = \
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 
 def min_chars_size(alphabet_size, bytes_size):
@@ -132,52 +141,74 @@ def chunk_string(s, size):
     return chunks
 
 
-b64alphabet = \
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+def read_between_periods(s):
+    start = s.find('.')
+    if start == -1:
+        raise Exception("No period found in input.")
+    end = s.find('.', start+1)
+    if end == -1:
+        raise Exception("No closing period found in input.")
+    return s[start+1:end]
 
-b62alphabet = \
-    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+def get_block_size(args):
+    block_size = 32
+    if args['--base64']:
+        block_size = 3
+    if args['--block']:
+        block_size = int(args['--block'])
+    return block_size
+
+
+def get_alphabet(args):
+    alphabet = b62alphabet
+    if args['--base64']:
+        alphabet = b64alphabet
+    if args['--alphabet']:
+        alphabet = args['--alphabet']
+    return alphabet
+
+
+def do_efficient(args):
+    if args['--bound'] is None:
+        upper_bound = 50
+    else:
+        upper_bound = int(args['--bound'])
+    alphabet_size = int(args['<alphabet_size>'])
+    print_efficient_chars_sizes(alphabet_size, upper_bound)
+
+
+def do_encode(args):
+    if args['<bytes>'] is not None:
+        bytes_in = args['<bytes>'].encode()
+    else:
+        bytes_in = sys.stdin.buffer.read()
+    chunks = chunk_bytes(bytes_in, get_block_size(args))
+    print(' '.join(encode_to_chars(
+        get_alphabet(args), chunk) for chunk in chunks))
+
+
+def do_decode(args):
+    if args['<chars>'] is not None:
+        chars_in = args['<chars>']
+    else:
+        chars_in = sys.stdin.read()
+    alphabet = get_alphabet(args)
+    char_block_size = min_chars_size(len(alphabet), get_block_size(args))
+    chunks = chunk_string(chars_in, char_block_size)
+    for chunk in chunks:
+        sys.stdout.buffer.write(decode_from_chars(alphabet, chunk))
 
 
 def main():
     args = docopt.docopt(__doc__)
-    alphabet = b62alphabet
-    block_size = 32
-
-    if args['--base64']:
-        alphabet = b64alphabet
-        block_size = 3
-
-    if args['--alphabet']:
-        alphabet = args['--alphabet']
-
-    if args['--block']:
-        block_size = int(args['--block'])
 
     if args['efficient']:
-        if args['--bound'] is None:
-            upper_bound = 50
-        else:
-            upper_bound = int(args['--bound'])
-        alphabet_size = int(args['<alphabet_size>'])
-        print_efficient_chars_sizes(alphabet_size, upper_bound)
+        do_efficient(args)
     elif args['encode']:
-        if args['<bytes>'] is not None:
-            bytes_in = args['<bytes>'].encode()
-        else:
-            bytes_in = sys.stdin.buffer.read()
-        chunks = chunk_bytes(bytes_in, block_size)
-        print(' '.join(encode_to_chars(alphabet, chunk) for chunk in chunks))
+        do_encode(args)
     elif args['decode']:
-        if args['<chars>'] is not None:
-            chars_in = args['<chars>']
-        else:
-            chars_in = sys.stdin.read()
-        char_block_size = min_chars_size(len(alphabet), block_size)
-        chunks = chunk_string(chars_in, char_block_size)
-        for chunk in chunks:
-            sys.stdout.buffer.write(decode_from_chars(alphabet, chunk))
-
+        do_decode(args)
 
 if __name__ == '__main__':
     main()
