@@ -51,7 +51,11 @@ def json_repr(obj):
             return {_recurse_repr(key): _recurse_repr(val)
                     for key, val in obj.items()}
         elif isinstance(obj, bytes):
-            return base64.b64encode(obj).decode()
+            try:
+                obj.decode('utf8')
+                return repr(obj)
+            except UnicodeDecodeError:
+                return repr(base64.b64encode(obj))
         else:
             return obj
     return json.dumps(_recurse_repr(obj), indent='  ')

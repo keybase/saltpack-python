@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 
+import base64
 import hashlib
 import io
 import umsgpack
@@ -29,7 +30,7 @@ def sign(message):
     output = io.BytesIO()
     umsgpack.pack(header, output)
 
-    for chunk in chunks_with_empty(message, 1000000):
+    for chunk in chunks_with_empty(message, 50):
         payload_digest = hashlib.sha512(chunk).digest()
         payload_sig_text = prefix + b"ATTACHED\0" + payload_digest
         payload_sig = nacl.bindings.crypto_sign(payload_sig_text, ephemeral_sk)
@@ -41,7 +42,7 @@ def sign(message):
         umsgpack.pack(packet, output)
 
     output_bytes = output.getvalue()
-    print(output_bytes)
+    print(base64.b64encode(output_bytes))
     return output_bytes
 
 
