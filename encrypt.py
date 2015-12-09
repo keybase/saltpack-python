@@ -112,8 +112,7 @@ def encrypt(sender_private, recipient_groups, message, chunk_size):
 
     header = [
         "sillybox",  # format name
-        1,           # major version
-        0,           # minor version
+        [1, 0],      # major and minor version
         0,           # mode (encryption, as opposed to signing/detached)
         ephemeral_public,
         recipient_sets,
@@ -155,8 +154,7 @@ def decrypt(input, recipient_private):
     print(json_repr(header))
     [
         format_name,
-        major_version,
-        minor_version,
+        [major_version, minor_version],
         mode,
         ephemeral_public,
         recipients,
