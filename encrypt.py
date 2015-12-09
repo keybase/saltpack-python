@@ -93,7 +93,7 @@ def encrypt(sender_private, recipient_groups, message, chunk_size):
             # sent using sender_private.
             keys = [
                 encryption_key,
-                group_num,  # TODO: xor this with something
+                group_num | (1 << 31),  # set the high bit for constant size
                 mac_key,
             ]
             keys_bytes = umsgpack.packb(keys)
@@ -194,7 +194,8 @@ def decrypt(input, recipient_private):
     keys = umsgpack.unpackb(keys_bytes)
     print('Keys: ', end='')
     print(json_repr(keys))
-    [encryption_key, mac_group, mac_key] = keys
+    [encryption_key, masked_mac_group, mac_key] = keys
+    mac_group = masked_mac_group ^ (1 << 31)
 
     # Decrypt each of the packets.
     output = io.BytesIO()
