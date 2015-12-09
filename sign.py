@@ -46,6 +46,31 @@ def sign(message):
     return output_bytes
 
 
+def detached_sign(message):
+    real_pk, real_sk = nacl.bindings.crypto_sign_keypair()
+    ephemeral_pk, ephemeral_sk = nacl.bindings.crypto_sign_keypair()
+    delegation_sig_text = prefix + b"DELEGATION\0" + ephemeral_pk
+    delegation_sig = nacl.bindings.crypto_sign(delegation_sig_text, real_sk)
+    detached_delegation_sig = delegation_sig[:64]
+    message_digest = hashlib.sha512(message).digest()
+    message_sig_text = prefix + b"DETACHED\0" + message_digest
+    message_sig = nacl.bindings.crypto_sign(message_sig_text, ephemeral_sk)
+    detached_message_sig = message_sig[:64]
+
+    header = [
+        "saltbox",
+        [1, 0],
+        1,
+        real_pk,
+        ephemeral_pk,
+        detached_delegation_sig,
+        detached_message_sig,
+        ]
+    output_bytes = umsgpack.packb(header)
+    print(base64.b64encode(output_bytes))
+    return output_bytes
+
+
 def verify(signed_message):
     input = io.BytesIO(signed_message)
     output = io.BytesIO()
@@ -80,11 +105,41 @@ def verify(signed_message):
     return verified_message
 
 
+def detached_verify(message, signature):
+    header = umsgpack.unpackb(signature)
+    print(json_repr(header))
+    [
+        name,
+        [major, minor],
+        mode,
+        real_pk,
+        ephemeral_pk,
+        detached_delegation_sig,
+        detached_message_sig,
+    ] = header
+
+    delegation_sig_text = prefix + b"DELEGATION\0" + ephemeral_pk
+    delegation_sig = detached_delegation_sig + delegation_sig_text
+    nacl.bindings.crypto_sign_open(delegation_sig, real_pk)
+
+    message_digest = hashlib.sha512(message).digest()
+    message_sig_text = prefix + b"DETACHED\0" + message_digest
+    message_sig = detached_message_sig + message_sig_text
+    nacl.bindings.crypto_sign_open(message_sig, ephemeral_pk)
+
+    print(message)
+    return message
+
+
 def main():
     message = (b"I swear to tell the truth, the whole truth, and nothing " +
                b"but the truth, so help me God.")
     signed_message = sign(message)
     verify(signed_message)
+
+    print()
+    detached_sig = detached_sign(message)
+    detached_verify(message, detached_sig)
 
 if __name__ == '__main__':
     main()
