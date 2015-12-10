@@ -3,7 +3,9 @@
 import base64
 import hashlib
 import io
+import os
 import umsgpack
+
 import nacl.bindings
 
 # ./encrypt.py
@@ -15,25 +17,21 @@ prefix = b"SALTBOXPREFIX\0"
 
 def sign(message):
     real_pk, real_sk = nacl.bindings.crypto_sign_keypair()
-    ephemeral_pk, ephemeral_sk = nacl.bindings.crypto_sign_keypair()
-    delegation_sig_text = prefix + b"DELEGATION\0" + ephemeral_pk
-    delegation_sig = nacl.bindings.crypto_sign(delegation_sig_text, real_sk)
-    detached_delegation_sig = delegation_sig[:64]
+    nonce = os.urandom(16)
     header = [
         "saltbox",
         [1, 0],
         1,
         real_pk,
-        ephemeral_pk,
-        detached_delegation_sig,
+        nonce,
         ]
     output = io.BytesIO()
     umsgpack.pack(header, output)
 
     for chunk in chunks_with_empty(message, 50):
-        payload_digest = hashlib.sha512(chunk).digest()
+        payload_digest = hashlib.sha512(nonce + chunk).digest()
         payload_sig_text = prefix + b"ATTACHED\0" + payload_digest
-        payload_sig = nacl.bindings.crypto_sign(payload_sig_text, ephemeral_sk)
+        payload_sig = nacl.bindings.crypto_sign(payload_sig_text, real_sk)
         detached_payload_sig = payload_sig[:64]
         packet = [
             detached_payload_sig,
@@ -48,13 +46,10 @@ def sign(message):
 
 def detached_sign(message):
     real_pk, real_sk = nacl.bindings.crypto_sign_keypair()
-    ephemeral_pk, ephemeral_sk = nacl.bindings.crypto_sign_keypair()
-    delegation_sig_text = prefix + b"DELEGATION\0" + ephemeral_pk
-    delegation_sig = nacl.bindings.crypto_sign(delegation_sig_text, real_sk)
-    detached_delegation_sig = delegation_sig[:64]
-    message_digest = hashlib.sha512(message).digest()
+    nonce = os.urandom(16)
+    message_digest = hashlib.sha512(nonce + message).digest()
     message_sig_text = prefix + b"DETACHED\0" + message_digest
-    message_sig = nacl.bindings.crypto_sign(message_sig_text, ephemeral_sk)
+    message_sig = nacl.bindings.crypto_sign(message_sig_text, real_sk)
     detached_message_sig = message_sig[:64]
 
     header = [
@@ -62,8 +57,7 @@ def detached_sign(message):
         [1, 0],
         1,
         real_pk,
-        ephemeral_pk,
-        detached_delegation_sig,
+        nonce,
         detached_message_sig,
         ]
     output_bytes = umsgpack.packb(header)
@@ -81,21 +75,17 @@ def verify(signed_message):
         [major, minor],
         mode,
         real_pk,
-        ephemeral_pk,
-        detached_delegation_sig,
+        nonce,
     ] = header
-    delegation_sig_text = prefix + b"DELEGATION\0" + ephemeral_pk
-    delegation_sig = detached_delegation_sig + delegation_sig_text
-    nacl.bindings.crypto_sign_open(delegation_sig, real_pk)
 
     while True:
         payload_packet = umsgpack.unpack(input)
         print(json_repr(payload_packet))
         [detached_payload_sig, chunk] = payload_packet
-        payload_digest = hashlib.sha512(chunk).digest()
+        payload_digest = hashlib.sha512(nonce + chunk).digest()
         payload_sig_text = prefix + b"ATTACHED\0" + payload_digest
         payload_sig = detached_payload_sig + payload_sig_text
-        nacl.bindings.crypto_sign_open(payload_sig, ephemeral_pk)
+        nacl.bindings.crypto_sign_open(payload_sig, real_pk)
         if chunk == b"":
             break
         output.write(chunk)
@@ -113,19 +103,14 @@ def detached_verify(message, signature):
         [major, minor],
         mode,
         real_pk,
-        ephemeral_pk,
-        detached_delegation_sig,
+        nonce,
         detached_message_sig,
     ] = header
 
-    delegation_sig_text = prefix + b"DELEGATION\0" + ephemeral_pk
-    delegation_sig = detached_delegation_sig + delegation_sig_text
-    nacl.bindings.crypto_sign_open(delegation_sig, real_pk)
-
-    message_digest = hashlib.sha512(message).digest()
+    message_digest = hashlib.sha512(nonce + message).digest()
     message_sig_text = prefix + b"DETACHED\0" + message_digest
     message_sig = detached_message_sig + message_sig_text
-    nacl.bindings.crypto_sign_open(message_sig, ephemeral_pk)
+    nacl.bindings.crypto_sign_open(message_sig, real_pk)
 
     print(message)
     return message
