@@ -198,6 +198,7 @@ def decrypt(input, recipient_private):
     print(json_repr(keys))
     [encryption_key, masked_mac_group, mac_key] = keys
     mac_group = masked_mac_group ^ (1 << 31)
+    print('MAC group:', mac_group)
 
     # Decrypt each of the packets.
     output = io.BytesIO()
