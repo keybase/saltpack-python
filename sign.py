@@ -25,7 +25,7 @@ def sign(message):
     output = io.BytesIO()
     umsgpack.pack(header, output)
 
-    for chunk in chunks_with_empty(message, 50):
+    for chunk in chunks_with_empty(message, 1000000):
         payload_digest = hashlib.sha512(salt + chunk).digest()
         payload_sig_text = b"SaltBox\0attached signature\0" + payload_digest
         payload_sig = nacl.bindings.crypto_sign(payload_sig_text, real_sk)
@@ -114,14 +114,13 @@ def detached_verify(message, signature):
 
 
 def main():
-    message = (b"I swear to tell the truth, the whole truth, and nothing " +
-               b"but the truth, so help me God.")
-    signed_message = sign(message)
+    default_message = b'The Magic Words are Squeamish Ossifrage'
+    signed_message = sign(default_message)
     verify(signed_message)
 
     print()
-    detached_sig = detached_sign(message)
-    detached_verify(message, detached_sig)
+    detached_sig = detached_sign(default_message)
+    detached_verify(default_message, detached_sig)
 
 if __name__ == '__main__':
     main()
