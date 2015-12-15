@@ -12,9 +12,6 @@ import nacl.bindings
 from encrypt import json_repr, chunks_with_empty
 
 
-prefix = b"SALTBOXPREFIX\0"
-
-
 def sign(message):
     real_pk, real_sk = nacl.bindings.crypto_sign_keypair()
     salt = os.urandom(16)
@@ -30,7 +27,7 @@ def sign(message):
 
     for chunk in chunks_with_empty(message, 50):
         payload_digest = hashlib.sha512(salt + chunk).digest()
-        payload_sig_text = prefix + b"ATTACHED\0" + payload_digest
+        payload_sig_text = b"SaltBox\0attached signature\0" + payload_digest
         payload_sig = nacl.bindings.crypto_sign(payload_sig_text, real_sk)
         detached_payload_sig = payload_sig[:64]
         packet = [
@@ -48,7 +45,7 @@ def detached_sign(message):
     real_pk, real_sk = nacl.bindings.crypto_sign_keypair()
     salt = os.urandom(16)
     message_digest = hashlib.sha512(salt + message).digest()
-    message_sig_text = prefix + b"DETACHED\0" + message_digest
+    message_sig_text = b"SaltBox\0detached signature\0" + message_digest
     message_sig = nacl.bindings.crypto_sign(message_sig_text, real_sk)
     detached_message_sig = message_sig[:64]
 
@@ -83,7 +80,7 @@ def verify(signed_message):
         print(json_repr(payload_packet))
         [detached_payload_sig, chunk] = payload_packet
         payload_digest = hashlib.sha512(salt + chunk).digest()
-        payload_sig_text = prefix + b"ATTACHED\0" + payload_digest
+        payload_sig_text = b"SaltBox\0attached signature\0" + payload_digest
         payload_sig = detached_payload_sig + payload_sig_text
         nacl.bindings.crypto_sign_open(payload_sig, real_pk)
         if chunk == b"":
@@ -108,7 +105,7 @@ def detached_verify(message, signature):
     ] = header
 
     message_digest = hashlib.sha512(salt + message).digest()
-    message_sig_text = prefix + b"DETACHED\0" + message_digest
+    message_sig_text = b"SaltBox\0detached signature\0" + message_digest
     message_sig = detached_message_sig + message_sig_text
     nacl.bindings.crypto_sign_open(message_sig, real_pk)
 
