@@ -16,7 +16,7 @@ def sign(message):
     real_pk, real_sk = nacl.bindings.crypto_sign_keypair()
     salt = os.urandom(16)
     header = [
-        "saltbox",
+        "SaltBox",
         [1, 0],
         1,
         real_pk,
@@ -50,7 +50,7 @@ def detached_sign(message):
     detached_message_sig = message_sig[:64]
 
     header = [
-        "saltbox",
+        "SaltBox",
         [1, 0],
         1,
         real_pk,

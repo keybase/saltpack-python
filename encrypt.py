@@ -106,9 +106,9 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         recipient_tuples.append(recipient_tuple)
 
     header = [
-        "sillybox",  # format name
-        [1, 0],      # major and minor version
-        0,           # mode (encryption, as opposed to signing/detached)
+        "SaltBox",  # format name
+        [1, 0],     # major and minor version
+        0,          # mode (encryption, as opposed to signing/detached)
         ephemeral_public,
         recipient_tuples,
     ]
