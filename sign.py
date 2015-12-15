@@ -52,7 +52,7 @@ def detached_sign(message):
     header = [
         "SaltBox",
         [1, 0],
-        1,
+        2,
         real_pk,
         salt,
         detached_message_sig,
