@@ -8,11 +8,19 @@ Two roads diverged in a yellow wood, and sorry I could not travel both
 and be one traveller, long I stood, and looked down one as far as I
 could, to where it bent in the undergrowth."""
 
-encoded = sh('./armor.py encode', input=inputstr).read()
+blocked = sh('./armor.py block', input=inputstr).read()
+
+print(blocked)
+
+unblocked = sh('./armor.py unblock', input=blocked).read()
+
+print(unblocked)
+
+encoded = sh('./armor.py armor', input=inputstr).read()
 
 print(encoded)
 
-decoded = sh('./armor.py decode', input=encoded).read()
+decoded = sh('./armor.py dearmor', input=encoded).read()
 
 print(decoded)
 

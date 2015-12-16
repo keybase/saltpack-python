@@ -7,7 +7,7 @@ import sys
 
 __doc__ = '''\
 Usage:
-    armor.py efficient <alphabet_size> <max-size>
+    armor.py efficient <alphabet_size> [<max-size>]
     armor.py block [<bytes>] [options]
     armor.py unblock [<chars>] [options]
     armor.py armor [<bytes>] [options]
@@ -189,10 +189,10 @@ def get_chars_in(args):
 
 
 def do_efficient(args):
-    if args['max-size'] is None:
+    if args['<max-size>'] is None:
         upper_bound = 50
     else:
-        upper_bound = int(args['max-size'])
+        upper_bound = int(args['<max-size>'])
     alphabet_size = int(args['<alphabet_size>'])
     print_efficient_chars_sizes(alphabet_size, upper_bound)
 
