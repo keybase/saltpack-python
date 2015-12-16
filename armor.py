@@ -217,7 +217,7 @@ def do_armor(args):
     words = chunk_iterable(output, 15)
     sentences = chunk_iterable(words, 200)
     print('BEGIN ARMOR.')
-    print('\n'.join(' '.join(sentence) for sentence in sentences))
+    print('\n'.join(' '.join(sentence) for sentence in sentences) + '.')
     print('END ARMOR.')
 
 
