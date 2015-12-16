@@ -119,7 +119,7 @@ def decode_from_chars(alphabet, chars_block):
     return bytes_int.to_bytes(bytes_size, byteorder='big')
 
 
-def chunk_bytes(b, size):
+def chunk_iterable(b, size):
     assert size > 0
     chunks = []
     i = 0
@@ -129,7 +129,7 @@ def chunk_bytes(b, size):
     return chunks
 
 
-def chunk_string(s, size):
+def chunk_string_ignoring_whitespace(s, size):
     'Skip over whitespace when assembling chunks.'
     assert size > 1
     chunks = []
@@ -209,13 +209,16 @@ def do_unblock(args):
 
 def do_armor(args):
     bytes_in = get_bytes_in(args)
-    print('BEGIN KEYBASE ENCODING.')
     alphabet = get_alphabet(args)
-    chunks = chunk_bytes(bytes_in, get_block_size(args))
+    chunks = chunk_iterable(bytes_in, get_block_size(args))
+    output = ""
     for chunk in chunks:
-        sys.stdout.write(encode_to_chars(alphabet, chunk))
-    print('.')
-    print('END KEYBASE ENCODING.')
+        output += encode_to_chars(alphabet, chunk)
+    words = chunk_iterable(output, 15)
+    sentences = chunk_iterable(words, 200)
+    print('BEGIN ARMOR.')
+    print('\n'.join(' '.join(sentence) for sentence in sentences))
+    print('END ARMOR.')
 
 
 def do_dearmor(args):
@@ -234,7 +237,7 @@ def do_dearmor(args):
         print("No second period found in input.", file=sys.stderr)
         sys.exit(1)
     chopped_input = chars_in[first_period+1:second_period]
-    chunks = chunk_string(chopped_input, char_block_size)
+    chunks = chunk_string_ignoring_whitespace(chopped_input, char_block_size)
     for chunk in chunks:
         sys.stdout.buffer.write(decode_from_chars(alphabet, chunk))
 
