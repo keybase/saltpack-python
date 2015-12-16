@@ -174,6 +174,20 @@ def get_alphabet(args):
     return alphabet
 
 
+def get_bytes_in(args):
+    if args['<bytes>'] is not None:
+        return args['<bytes>'].encode()
+    else:
+        return sys.stdin.buffer.read()
+
+
+def get_chars_in(args):
+    if args['<chars>'] is not None:
+        return args['<chars>']
+    else:
+        return sys.stdin.read()
+
+
 def do_efficient(args):
     if args['max-size'] is None:
         upper_bound = 50
@@ -184,32 +198,17 @@ def do_efficient(args):
 
 
 def do_block(args):
-    if args['<bytes>'] is not None:
-        bytes_in = args['<bytes>'].encode()
-    else:
-        bytes_in = sys.stdin.buffer.read()
-    chunks = chunk_bytes(bytes_in, get_block_size(args))
-    print(' '.join(encode_to_chars(
-        get_alphabet(args), chunk) for chunk in chunks))
+    print(encode_to_chars(get_alphabet(args), get_bytes_in(args)))
 
 
 def do_unblock(args):
-    if args['<chars>'] is not None:
-        chars_in = args['<chars>']
-    else:
-        chars_in = sys.stdin.read()
+    chars_in = get_chars_in(args).strip()
     alphabet = get_alphabet(args)
-    char_block_size = min_chars_size(len(alphabet), get_block_size(args))
-    chunks = chunk_string(chars_in, char_block_size)
-    for chunk in chunks:
-        sys.stdout.buffer.write(decode_from_chars(alphabet, chunk))
+    sys.stdout.buffer.write(decode_from_chars(alphabet, chars_in))
 
 
 def do_armor(args):
-    if args['<bytes>'] is not None:
-        bytes_in = args['<bytes>'].encode()
-    else:
-        bytes_in = sys.stdin.buffer.read()
+    bytes_in = get_bytes_in(args)
     print('BEGIN KEYBASE ENCODING.')
     alphabet = get_alphabet(args)
     chunks = chunk_bytes(bytes_in, get_block_size(args))
@@ -220,10 +219,7 @@ def do_armor(args):
 
 
 def do_dearmor(args):
-    if args['<chars>'] is not None:
-        chars_in = args['<chars>']
-    else:
-        chars_in = sys.stdin.read()
+    chars_in = get_chars_in(args)
     alphabet = get_alphabet(args)
     char_block_size = min_chars_size(len(alphabet), get_block_size(args))
     # Find the substring between the first two periods.
