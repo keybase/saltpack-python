@@ -79,38 +79,37 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
     nonce_prefix = sha512(nonce_prefix_preimage).digest()[:16]
     encryption_key = os.urandom(32)
 
-    recipient_tuples = []
+    keys = [sender_public, encryption_key]
+    keys_bytes = umsgpack.packb(keys)
+    header_nonce = nonce_prefix + counter(0)
+
+    recipient_pairs = []
     recipient_beforenms = {}
     for recipient_public in recipient_public_keys:
-        # The sender_box holds the sender's long-term public key. It's
-        # encrypted for each recipient with the ephemeral private key.
-        sender_box = nacl.bindings.crypto_box(
-            message=sender_public,
-            nonce=nonce_prefix + counter(0),
+        # The recipient box holds the sender's long-term public key and the
+        # symmetric message encryption key. It's encrypted for each recipient
+        # with the ephemeral private key.
+        recipient_box = nacl.bindings.crypto_box(
+            message=keys_bytes,
+            nonce=header_nonce,
             pk=recipient_public,
             sk=ephemeral_private)
+        # None is for the recipient public key, which is optional.
+        pair = [None, recipient_box]
+        recipient_pairs.append(pair)
 
-        # The key_box holds the randomly generated encryption_key. It's
-        # encrypted for each recipient with the sender's long-term private key.
+        # Precompute the shared secret to speed up payload packet encryption.
         beforenm = nacl.bindings.crypto_box_beforenm(
             pk=recipient_public,
             sk=sender_private)
         recipient_beforenms[recipient_public] = beforenm
-        key_box = nacl.bindings.crypto_box_afternm(
-            message=encryption_key,
-            nonce=nonce_prefix + counter(1),
-            k=beforenm)
-
-        # None is for the recipient public key, which is optional.
-        recipient_tuple = [None, sender_box, key_box]
-        recipient_tuples.append(recipient_tuple)
 
     header = [
         "SaltBox",  # format name
         [1, 0],     # major and minor version
         0,          # mode (encryption, as opposed to signing/detached)
         ephemeral_public,
-        recipient_tuples,
+        recipient_pairs,
     ]
     output = io.BytesIO()
     output.write(umsgpack.packb(header))
@@ -157,7 +156,7 @@ def decrypt(input, recipient_private):
         [major_version, minor_version],
         mode,
         ephemeral_public,
-        recipient_tuples,
+        recipient_pairs,
     ] = header
     nonce_prefix_preimage = (
         b"SaltPack\0" +
@@ -169,11 +168,11 @@ def decrypt(input, recipient_private):
         sk=recipient_private)
 
     # Try decrypting each sender box, until we find the one that works.
-    for recipient_index, recipient_tuple in enumerate(recipient_tuples):
-        [_, sender_box, key_box] = recipient_tuple
+    for recipient_index, pair in enumerate(recipient_pairs):
+        [_, recipient_box] = pair
         try:
-            sender_public = nacl.bindings.crypto_box_open_afternm(
-                ciphertext=sender_box,
+            keys_bytes = nacl.bindings.crypto_box_open_afternm(
+                ciphertext=recipient_box,
                 nonce=nonce_prefix + counter(0),
                 k=ephemeral_beforenm)
             break
@@ -182,14 +181,14 @@ def decrypt(input, recipient_private):
     else:
         raise RuntimeError('Failed to find matching recipient.')
 
-    # Decrypt the encryption_key using sender_public.
+    # Unpack the sender key and the message encryption key.
+    keys = umsgpack.unpackb(keys_bytes)
+    sender_public, encryption_key = keys
+
+    # Precompute the shared secret to speed up payload decryption.
     sender_beforenm = nacl.bindings.crypto_box_beforenm(
         pk=sender_public,
         sk=recipient_private)
-    encryption_key = nacl.bindings.crypto_box_open_afternm(
-        ciphertext=key_box,
-        nonce=nonce_prefix + counter(1),
-        k=sender_beforenm)
 
     # Decrypt each of the packets.
     output = io.BytesIO()
