@@ -7,11 +7,16 @@ import sys
 
 __doc__ = '''\
 Usage:
-    armor.py efficient <alphabet_size> [--bound=<n>]
-    armor.py encode [--alphabet=<str>] [--base64] [--block=<n>] [<bytes>]
-    armor.py decode [--alphabet=<str>] [--base64] [--block=<n>] [<chars>]
-    armor.py armor [--alphabet=<str>] [--base64] [--block=<n>] [<bytes>]
-    armor.py dearmor [--alphabet=<str>] [--base64] [--block=<n>] [<chars>]
+    armor.py efficient <alphabet_size> <max-size>
+    armor.py block [<bytes>] [options]
+    armor.py unblock [<chars>] [options]
+    armor.py armor [<bytes>] [options]
+    armor.py dearmor [<chars>] [options]
+
+Options:
+    -a --alphabet  the alphabet string to index into
+    --base64       use the Base64 alphabet and block size
+    -b --block     the block size
 '''
 
 
@@ -170,15 +175,15 @@ def get_alphabet(args):
 
 
 def do_efficient(args):
-    if args['--bound'] is None:
+    if args['max-size'] is None:
         upper_bound = 50
     else:
-        upper_bound = int(args['--bound'])
+        upper_bound = int(args['max-size'])
     alphabet_size = int(args['<alphabet_size>'])
     print_efficient_chars_sizes(alphabet_size, upper_bound)
 
 
-def do_encode(args):
+def do_block(args):
     if args['<bytes>'] is not None:
         bytes_in = args['<bytes>'].encode()
     else:
@@ -188,7 +193,7 @@ def do_encode(args):
         get_alphabet(args), chunk) for chunk in chunks))
 
 
-def do_decode(args):
+def do_unblock(args):
     if args['<chars>'] is not None:
         chars_in = args['<chars>']
     else:
@@ -243,10 +248,10 @@ def main():
 
     if args['efficient']:
         do_efficient(args)
-    elif args['encode']:
-        do_encode(args)
-    elif args['decode']:
-        do_decode(args)
+    elif args['block']:
+        do_block(args)
+    elif args['unblock']:
+        do_unblock(args)
     elif args['armor']:
         do_armor(args)
     elif args['dearmor']:
