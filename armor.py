@@ -200,6 +200,44 @@ def do_decode(args):
         sys.stdout.buffer.write(decode_from_chars(alphabet, chunk))
 
 
+def do_armor(args):
+    if args['<bytes>'] is not None:
+        bytes_in = args['<bytes>'].encode()
+    else:
+        bytes_in = sys.stdin.buffer.read()
+    print('BEGIN KEYBASE ENCODING.')
+    alphabet = get_alphabet(args)
+    chunks = chunk_bytes(bytes_in, get_block_size(args))
+    for chunk in chunks:
+        sys.stdout.write(encode_to_chars(alphabet, chunk))
+    print('.')
+    print('END KEYBASE ENCODING.')
+
+
+def do_dearmor(args):
+    if args['<chars>'] is not None:
+        chars_in = args['<chars>']
+    else:
+        chars_in = sys.stdin.read()
+    alphabet = get_alphabet(args)
+    char_block_size = min_chars_size(len(alphabet), get_block_size(args))
+    # Find the substring between the first two periods.
+    try:
+        first_period = chars_in.index('.')
+    except ValueError:
+        print("No period found in input.", file=sys.stderr)
+        sys.exit(1)
+    try:
+        second_period = chars_in.index('.', first_period+1)
+    except ValueError:
+        print("No second period found in input.", file=sys.stderr)
+        sys.exit(1)
+    chopped_input = chars_in[first_period+1:second_period]
+    chunks = chunk_string(chopped_input, char_block_size)
+    for chunk in chunks:
+        sys.stdout.buffer.write(decode_from_chars(alphabet, chunk))
+
+
 def main():
     args = docopt.docopt(__doc__)
 
@@ -209,6 +247,10 @@ def main():
         do_encode(args)
     elif args['decode']:
         do_decode(args)
+    elif args['armor']:
+        do_armor(args)
+    elif args['dearmor']:
+        do_dearmor(args)
 
 if __name__ == '__main__':
     main()
