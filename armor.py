@@ -16,7 +16,8 @@ Usage:
 Options:
     -a --alphabet=<str>  the alphabet string to index into
     --base64             use the Base64 alphabet and block size
-    -b --block           the block size
+    -b --block=<size>    the block size
+    --no-shift           skip the left shift
     --raw                omit 'BEGIN ARMOR.' and 'END ARMOR.'
 '''
 
@@ -77,7 +78,8 @@ def extra_bits(alphabet_size, chars_size, bytes_size):
     return total_bits - 8*bytes_size
 
 
-def encode_to_chars(alphabet, bytes_block):
+def encode_to_chars(bytes_block, args):
+    alphabet = get_alphabet(args)
     # Figure out how wide the chars block needs to be, and how many extra bits
     # we have.
     chars_size = min_chars_size(len(alphabet), len(bytes_block))
@@ -85,7 +87,8 @@ def encode_to_chars(alphabet, bytes_block):
     # Convert the bytes into an integer, big-endian.
     bytes_int = int.from_bytes(bytes_block, byteorder='big')
     # Shift left by the extra bits.
-    bytes_int <<= extra
+    if not args['--no-shift']:
+        bytes_int <<= extra
     # Convert the result into our base.
     places = []
     for place in range(chars_size):
@@ -104,7 +107,8 @@ def get_char_index(alphabet, char):
             repr(char), repr(alphabet)))
 
 
-def decode_from_chars(alphabet, chars_block):
+def decode_from_chars(chars_block, args):
+    alphabet = get_alphabet(args)
     # Figure out how many bytes we have, and how many extra bits they'll have
     # been shifted by.
     bytes_size = max_bytes_size(len(alphabet), len(chars_block))
@@ -115,7 +119,8 @@ def decode_from_chars(alphabet, chars_block):
         bytes_int *= len(alphabet)
         bytes_int += get_char_index(alphabet, c)
     # Shift right by the extra bits.
-    bytes_int >>= extra
+    if not args['--no-shift']:
+        bytes_int >>= extra
     # Convert the result to bytes, big_endian.
     return bytes_int.to_bytes(bytes_size, byteorder='big')
 
@@ -199,22 +204,20 @@ def do_efficient(args):
 
 
 def do_block(args):
-    print(encode_to_chars(get_alphabet(args), get_bytes_in(args)))
+    print(encode_to_chars(get_bytes_in(args), args))
 
 
 def do_unblock(args):
     chars_in = get_chars_in(args).strip()
-    alphabet = get_alphabet(args)
-    sys.stdout.buffer.write(decode_from_chars(alphabet, chars_in))
+    sys.stdout.buffer.write(decode_from_chars(chars_in, args))
 
 
 def do_armor(args):
     bytes_in = get_bytes_in(args)
-    alphabet = get_alphabet(args)
     chunks = chunk_iterable(bytes_in, get_block_size(args))
     output = ""
     for chunk in chunks:
-        output += encode_to_chars(alphabet, chunk)
+        output += encode_to_chars(chunk, args)
     if args['--raw']:
         print(output)
         return
@@ -244,7 +247,7 @@ def do_dearmor(args):
         chars_in = chars_in[first_period+1:second_period]
     chunks = chunk_string_ignoring_whitespace(chars_in, char_block_size)
     for chunk in chunks:
-        sys.stdout.buffer.write(decode_from_chars(alphabet, chunk))
+        sys.stdout.buffer.write(decode_from_chars(chunk, args))
 
 
 def main():
