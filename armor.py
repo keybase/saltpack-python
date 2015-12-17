@@ -14,9 +14,10 @@ Usage:
     armor.py dearmor [<chars>] [options]
 
 Options:
-    -a --alphabet  the alphabet string to index into
-    --base64       use the Base64 alphabet and block size
-    -b --block     the block size
+    -a --alphabet=<str>  the alphabet string to index into
+    --base64             use the Base64 alphabet and block size
+    -b --block           the block size
+    --raw                omit 'BEGIN ARMOR.' and 'END ARMOR.'
 '''
 
 
@@ -214,6 +215,9 @@ def do_armor(args):
     output = ""
     for chunk in chunks:
         output += encode_to_chars(alphabet, chunk)
+    if args['--raw']:
+        print(output)
+        return
     words = chunk_iterable(output, 15)
     sentences = chunk_iterable(words, 200)
     print('BEGIN ARMOR.')
@@ -225,19 +229,20 @@ def do_dearmor(args):
     chars_in = get_chars_in(args)
     alphabet = get_alphabet(args)
     char_block_size = min_chars_size(len(alphabet), get_block_size(args))
-    # Find the substring between the first two periods.
-    try:
-        first_period = chars_in.index('.')
-    except ValueError:
-        print("No period found in input.", file=sys.stderr)
-        sys.exit(1)
-    try:
-        second_period = chars_in.index('.', first_period+1)
-    except ValueError:
-        print("No second period found in input.", file=sys.stderr)
-        sys.exit(1)
-    chopped_input = chars_in[first_period+1:second_period]
-    chunks = chunk_string_ignoring_whitespace(chopped_input, char_block_size)
+    if not args['--raw']:
+        # Find the substring between the first two periods.
+        try:
+            first_period = chars_in.index('.')
+        except ValueError:
+            print("No period found in input.", file=sys.stderr)
+            sys.exit(1)
+        try:
+            second_period = chars_in.index('.', first_period+1)
+        except ValueError:
+            print("No second period found in input.", file=sys.stderr)
+            sys.exit(1)
+        chars_in = chars_in[first_period+1:second_period]
+    chunks = chunk_string_ignoring_whitespace(chars_in, char_block_size)
     for chunk in chunks:
         sys.stdout.buffer.write(decode_from_chars(alphabet, chunk))
 
