@@ -15,7 +15,8 @@ Usage:
 
 Options:
     -a --alphabet=<str>  the alphabet string to index into
-    --base64             use the Base64 alphabet and block size
+    --base64             use the Base64 alphabet and 3-byte blocks
+    --base85             use the Base85 alphabet and 4-byte blocks
     -b --block=<size>    the block size
     --no-shift           skip the left shift
     --raw                omit 'BEGIN ARMOR.' and 'END ARMOR.'
@@ -27,6 +28,10 @@ b64alphabet = \
 
 b62alphabet = \
     "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+b85alphabet = \
+    "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ" \
+    "[\\]^_`abcdefghijklmnopqrstu"
 
 
 def min_chars_size(alphabet_size, bytes_size):
@@ -164,19 +169,23 @@ def read_between_periods(s):
 
 def get_block_size(args):
     block_size = 32
-    if args['--base64']:
-        block_size = 3
     if args['--block']:
         block_size = int(args['--block'])
+    elif args['--base64']:
+        block_size = 3
+    elif args['--base85']:
+        block_size = 4
     return block_size
 
 
 def get_alphabet(args):
     alphabet = b62alphabet
-    if args['--base64']:
-        alphabet = b64alphabet
     if args['--alphabet']:
         alphabet = args['--alphabet']
+    elif args['--base64']:
+        alphabet = b64alphabet
+    elif args['--base85']:
+        alphabet = b85alphabet
     return alphabet
 
 
