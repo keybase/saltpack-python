@@ -18,7 +18,7 @@ Options:
     --base64             use the Base64 alphabet and 3-byte blocks
     --base85             use the Base85 alphabet and 4-byte blocks
     -b --block=<size>    the block size
-    --no-shift           skip the left shift
+    --shift              shift the encoded number left as far as possible
     --raw                omit 'BEGIN ARMOR.' and 'END ARMOR.'
 '''
 
@@ -92,7 +92,7 @@ def encode_to_chars(bytes_block, args):
     # Convert the bytes into an integer, big-endian.
     bytes_int = int.from_bytes(bytes_block, byteorder='big')
     # Shift left by the extra bits.
-    if not args['--no-shift']:
+    if args['--shift']:
         bytes_int <<= extra
     # Convert the result into our base.
     places = []
@@ -124,7 +124,7 @@ def decode_from_chars(chars_block, args):
         bytes_int *= len(alphabet)
         bytes_int += get_char_index(alphabet, c)
     # Shift right by the extra bits.
-    if not args['--no-shift']:
+    if args['--shift']:
         bytes_int >>= extra
     # Convert the result to bytes, big_endian.
     return bytes_int.to_bytes(bytes_size, byteorder='big')
