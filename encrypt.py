@@ -1,10 +1,12 @@
 #! /usr/bin/env python3
 
+import binascii
 import base64
 from hashlib import sha512
 import io
 import json
 import os
+import sys
 
 import umsgpack
 import nacl.bindings
@@ -13,8 +15,16 @@ import docopt
 
 __doc__ = '''\
 Usage:
-    encrypt.py [<message>] [--recipients=<num_recipients>]
-               [--chunk=<chunk_size>]
+    encrypt.py encrypt [<private>] [<recipients>...] [options]
+    encrypt.py decrypt [<private>] [options]
+
+If no private key is given, the default is 32 zero bytes. If no recipient is
+given, the default is the sender's own public key.
+
+Options:
+    -c --chunk=<size>   size of payload chunks, default 1 MB
+    -m --message=<msg>  message text, instead of reading stdin
+    --debug             debug mode
 '''
 
 FORMAT_VERSION = 1
@@ -145,12 +155,13 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
     return output.getvalue()
 
 
-def decrypt(input, recipient_private):
+def decrypt(input, recipient_private, *, debug=False):
     stream = io.BytesIO(input)
     # Parse the header.
     header = umsgpack.unpack(stream)
-    print('Header: ', end='')
-    print(json_repr(header))
+    if debug:
+        print('Header: ', end='')
+        print(json_repr(header))
     [
         format_name,
         [major_version, minor_version],
@@ -196,8 +207,9 @@ def decrypt(input, recipient_private):
     while True:
         payload_nonce = nonce_prefix + counter(packetnum)
         packet = umsgpack.unpack(stream)
-        print('Packet: ', end='')
-        print(json_repr(packet))
+        if debug:
+            print('Packet: ', end='')
+            print(json_repr(packet))
         [tag_boxes, stripped_payload_secretbox] = packet
         tag_box = tag_boxes[recipient_index]
 
@@ -214,7 +226,8 @@ def decrypt(input, recipient_private):
             nonce=payload_nonce,
             key=encryption_key)
         output.write(chunk)
-        print('Chunk:', chunk)
+        if debug:
+            print('Chunk:', chunk)
 
         # The empty chunk signifies the end of the message.
         if chunk == b'':
@@ -225,28 +238,63 @@ def decrypt(input, recipient_private):
     return output.getvalue()
 
 
-def main():
-    default_message = b'The Magic Words are Squeamish Ossifrage'
-    args = docopt.docopt(__doc__)
-    message = args['<message>']
+def get_private(args):
+    if args['<private>']:
+        private = binascii.unhexlify(args['<private>'])
+        assert len(private) == 32
+        return private
+    else:
+        return b'\0'*32
+
+
+def get_recipients(args):
+    if args['<recipients>']:
+        recipients = []
+        for recipient in args['<recipients>']:
+            key = binascii.unhexlify(recipient)
+            assert len(recipient) == 32
+            recipients.append(key)
+        return recipients
+    else:
+        # Without explicit recipients, just send to yourself.
+        private = get_private(args)
+        public = nacl.bindings.crypto_scalarmult_base(private)
+        return [public]
+
+
+def do_encrypt(args):
+    message = args['--message']
     if message is None:
-        encoded_message = default_message
+        encoded_message = sys.stdin.buffer.read()
     else:
         encoded_message = message.encode('utf8')
-    recipients_len = int(args.get('--recipients') or 1)
-    recipient_private_keys = [os.urandom(32) for i in range(recipients_len)]
-    recipient_public_keys = [nacl.bindings.crypto_scalarmult_base(r)
-                             for r in recipient_private_keys]
-    chunk_size = int(args.get('--chunk') or 100)
+    sender = get_private(args)
+    if args['--chunk']:
+        chunk_size = int(args['--chunk'])
+    else:
+        chunk_size = 10**6
+    recipients = get_recipients(args)
     output = encrypt(
-        jack_private,
-        recipient_public_keys,
+        sender,
+        recipients,
         encoded_message,
         chunk_size)
-    print(base64.b64encode(output).decode())
-    print('-----------------------------------------')
-    decoded_message = decrypt(output, recipient_private_keys[0])
-    print('message:', decoded_message)
+    sys.stdout.buffer.write(output)
+
+
+def do_decrypt(args):
+    message = sys.stdin.buffer.read()
+    private = get_private(args)
+    decoded_message = decrypt(message, private, debug=args['--debug'])
+    sys.stdout.buffer.write(decoded_message)
+
+
+def main():
+    args = docopt.docopt(__doc__)
+    if args['encrypt']:
+        do_encrypt(args)
+    else:
+        do_decrypt(args)
 
 
 if __name__ == '__main__':
