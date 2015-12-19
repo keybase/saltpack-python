@@ -160,8 +160,8 @@ def decrypt(input, recipient_private, *, debug=False):
     # Parse the header.
     header = umsgpack.unpack(stream)
     if debug:
-        print('Header: ', end='')
-        print(json_repr(header))
+        print('Header: ', end='', file=sys.stderr)
+        print(json_repr(header), file=sys.stderr)
     [
         format_name,
         [major_version, minor_version],
@@ -208,8 +208,8 @@ def decrypt(input, recipient_private, *, debug=False):
         payload_nonce = nonce_prefix + counter(packetnum)
         packet = umsgpack.unpack(stream)
         if debug:
-            print('Packet: ', end='')
-            print(json_repr(packet))
+            print('Packet: ', end='', file=sys.stderr)
+            print(json_repr(packet), file=sys.stderr)
         [tag_boxes, stripped_payload_secretbox] = packet
         tag_box = tag_boxes[recipient_index]
 
@@ -227,7 +227,7 @@ def decrypt(input, recipient_private, *, debug=False):
             key=encryption_key)
         output.write(chunk)
         if debug:
-            print('Chunk:', chunk)
+            print('Chunk:', chunk, file=sys.stderr)
 
         # The empty chunk signifies the end of the message.
         if chunk == b'':
