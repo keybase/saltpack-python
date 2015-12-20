@@ -83,8 +83,7 @@ def extra_bits(alphabet_size, chars_size, bytes_size):
     return total_bits - 8*bytes_size
 
 
-def encode_to_chars(bytes_block, args):
-    alphabet = get_alphabet(args)
+def encode_block(bytes_block, alphabet, *, shift=False):
     # Figure out how wide the chars block needs to be, and how many extra bits
     # we have.
     chars_size = min_chars_size(len(alphabet), len(bytes_block))
@@ -92,7 +91,7 @@ def encode_to_chars(bytes_block, args):
     # Convert the bytes into an integer, big-endian.
     bytes_int = int.from_bytes(bytes_block, byteorder='big')
     # Shift left by the extra bits.
-    if args['--shift']:
+    if shift:
         bytes_int <<= extra
     # Convert the result into our base.
     places = []
@@ -112,8 +111,7 @@ def get_char_index(alphabet, char):
             repr(char), repr(alphabet)))
 
 
-def decode_from_chars(chars_block, args):
-    alphabet = get_alphabet(args)
+def decode_block(chars_block, alphabet, *, shift=False):
     # Figure out how many bytes we have, and how many extra bits they'll have
     # been shifted by.
     bytes_size = max_bytes_size(len(alphabet), len(chars_block))
@@ -124,7 +122,7 @@ def decode_from_chars(chars_block, args):
         bytes_int *= len(alphabet)
         bytes_int += get_char_index(alphabet, c)
     # Shift right by the extra bits.
-    if args['--shift']:
+    if shift:
         bytes_int >>= extra
     # Convert the result to bytes, big_endian.
     return bytes_int.to_bytes(bytes_size, byteorder='big')
@@ -165,6 +163,42 @@ def read_between_periods(s):
     if end == -1:
         raise Exception("No closing period found in input.")
     return s[start+1:end]
+
+
+def armor(input_bytes, alphabet, block_size, *, raw=False, shift=False):
+    chunks = chunk_iterable(input_bytes, block_size)
+    output = ""
+    for chunk in chunks:
+        output += encode_block(chunk, alphabet, shift=shift)
+    if raw:
+        return output
+    words = chunk_iterable(output, 15)
+    sentences = chunk_iterable(words, 200)
+    joined = '\n'.join(' '.join(sentence) for sentence in sentences)
+    header = 'BEGIN ARMOR.\n\n'
+    footer = '.\n\nEND ARMOR.'  # note the first period here
+    return header + joined + footer
+
+
+def dearmor(input_chars, alphabet, char_block_size, *, raw=False, shift=False):
+    if not raw:
+        # Find the substring between the first two periods.
+        try:
+            first_period = input_chars.index('.')
+        except ValueError:
+            print("No period found in input.", file=sys.stderr)
+            sys.exit(1)
+        try:
+            second_period = input_chars.index('.', first_period+1)
+        except ValueError:
+            print("No second period found in input.", file=sys.stderr)
+            sys.exit(1)
+        input_chars = input_chars[first_period+1:second_period]
+    chunks = chunk_string_ignoring_whitespace(input_chars, char_block_size)
+    output = b''
+    for chunk in chunks:
+        output += decode_block(chunk, alphabet, shift=shift)
+    return output
 
 
 def get_block_size(args):
@@ -213,50 +247,38 @@ def do_efficient(args):
 
 
 def do_block(args):
-    print(encode_to_chars(get_bytes_in(args), args))
+    alphabet = get_alphabet(args)
+    bytes_input = get_bytes_in(args)
+    shift = args['--shift']
+    print(encode_block(bytes_input, alphabet, shift=shift))
 
 
 def do_unblock(args):
+    alphabet = get_alphabet(args)
     chars_in = get_chars_in(args).strip()
-    sys.stdout.buffer.write(decode_from_chars(chars_in, args))
+    shift = args['--shift']
+    sys.stdout.buffer.write(decode_block(chars_in, alphabet, shift=shift))
 
 
 def do_armor(args):
+    alphabet = get_alphabet(args)
     bytes_in = get_bytes_in(args)
-    chunks = chunk_iterable(bytes_in, get_block_size(args))
-    output = ""
-    for chunk in chunks:
-        output += encode_to_chars(chunk, args)
-    if args['--raw']:
-        print(output)
-        return
-    words = chunk_iterable(output, 15)
-    sentences = chunk_iterable(words, 200)
-    print('BEGIN ARMOR.')
-    print('\n'.join(' '.join(sentence) for sentence in sentences) + '.')
-    print('END ARMOR.')
+    shift = args['--shift']
+    raw = args['--raw']
+    block_size = get_block_size(args)
+    armored = armor(bytes_in, alphabet, block_size, raw=raw, shift=shift)
+    print(armored)
 
 
 def do_dearmor(args):
     chars_in = get_chars_in(args)
     alphabet = get_alphabet(args)
+    shift = args['--shift']
+    raw = args['--raw']
     char_block_size = min_chars_size(len(alphabet), get_block_size(args))
-    if not args['--raw']:
-        # Find the substring between the first two periods.
-        try:
-            first_period = chars_in.index('.')
-        except ValueError:
-            print("No period found in input.", file=sys.stderr)
-            sys.exit(1)
-        try:
-            second_period = chars_in.index('.', first_period+1)
-        except ValueError:
-            print("No second period found in input.", file=sys.stderr)
-            sys.exit(1)
-        chars_in = chars_in[first_period+1:second_period]
-    chunks = chunk_string_ignoring_whitespace(chars_in, char_block_size)
-    for chunk in chunks:
-        sys.stdout.buffer.write(decode_from_chars(chunk, args))
+    dearmored = dearmor(chars_in, alphabet, char_block_size, raw=raw,
+                        shift=shift)
+    sys.stdout.buffer.write(dearmored)
 
 
 def main():
