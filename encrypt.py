@@ -13,6 +13,8 @@ import nacl.bindings
 from nacl.exceptions import CryptoError
 import docopt
 
+import armor
+
 __doc__ = '''\
 Usage:
     encrypt.py encrypt [<private>] [<recipients>...] [options]
@@ -22,6 +24,7 @@ If no private key is given, the default is 32 zero bytes. If no recipient is
 given, the default is the sender's own public key.
 
 Options:
+    -a --armor          encode/decode with SaltPack armor
     -c --chunk=<size>   size of payload chunks, default 1 MB
     -m --message=<msg>  message text, instead of reading stdin
     --debug             debug mode
@@ -279,11 +282,15 @@ def do_encrypt(args):
         recipients,
         encoded_message,
         chunk_size)
+    if args['--armor']:
+        output = (armor.armor(output) + '\n').encode()
     sys.stdout.buffer.write(output)
 
 
 def do_decrypt(args):
     message = sys.stdin.buffer.read()
+    if args['--armor']:
+        message = armor.dearmor(message.decode())
     private = get_private(args)
     decoded_message = decrypt(message, private, debug=args['--debug'])
     sys.stdout.buffer.write(decoded_message)

@@ -165,7 +165,8 @@ def read_between_periods(s):
     return s[start+1:end]
 
 
-def armor(input_bytes, alphabet, block_size, *, raw=False, shift=False):
+def armor(input_bytes, *, alphabet=b62alphabet, block_size=32, raw=False,
+          shift=False):
     chunks = chunk_iterable(input_bytes, block_size)
     output = ""
     for chunk in chunks:
@@ -180,7 +181,8 @@ def armor(input_bytes, alphabet, block_size, *, raw=False, shift=False):
     return header + joined + footer
 
 
-def dearmor(input_chars, alphabet, char_block_size, *, raw=False, shift=False):
+def dearmor(input_chars, *, alphabet=b62alphabet, char_block_size=43,
+            raw=False, shift=False):
     if not raw:
         # Find the substring between the first two periods.
         try:
@@ -266,7 +268,8 @@ def do_armor(args):
     shift = args['--shift']
     raw = args['--raw']
     block_size = get_block_size(args)
-    armored = armor(bytes_in, alphabet, block_size, raw=raw, shift=shift)
+    armored = armor(bytes_in, alphabet=alphabet, block_size=block_size,
+                    raw=raw, shift=shift)
     print(armored)
 
 
@@ -276,8 +279,8 @@ def do_dearmor(args):
     shift = args['--shift']
     raw = args['--raw']
     char_block_size = min_chars_size(len(alphabet), get_block_size(args))
-    dearmored = dearmor(chars_in, alphabet, char_block_size, raw=raw,
-                        shift=shift)
+    dearmored = dearmor(chars_in, alphabet=alphabet,
+                        char_block_size=char_block_size, raw=raw, shift=shift)
     sys.stdout.buffer.write(dearmored)
 
 
