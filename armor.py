@@ -71,8 +71,8 @@ def print_efficient_chars_sizes(alphabet_size, chars_size_upper_bound):
     print("efficient block sizes for alphabet size", alphabet_size)
     for chars_size, bytes_size, efficiency in \
             efficient_chars_sizes(alphabet_size, chars_size_upper_bound):
-        print("{:2d} chars: {:2d} bytes ({:.2f}%)".format(
-            chars_size, bytes_size, 100 * efficiency))
+        print("{:2d} bytes: {:2d} chars ({:.2f}%)".format(
+            bytes_size, chars_size, 100 * efficiency))
 
 
 def extra_bits(alphabet_size, chars_size, bytes_size):
