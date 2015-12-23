@@ -115,6 +115,10 @@ def decode_block(chars_block, alphabet, *, shift=False):
     # Figure out how many bytes we have, and how many extra bits they'll have
     # been shifted by.
     bytes_size = max_bytes_size(len(alphabet), len(chars_block))
+    expected_char_size = min_chars_size(len(alphabet), bytes_size)
+    assert len(chars_block) == expected_char_size, \
+        "illegal chars size {}, expected {}".format(
+            len(chars_block), expected_char_size)
     extra = extra_bits(len(alphabet), len(chars_block), bytes_size)
     # Convert the chars to an integer.
     bytes_int = get_char_index(alphabet, chars_block[0])
