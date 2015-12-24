@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import docopt
+import io
 import math
 import sys
 
@@ -32,6 +33,47 @@ b62alphabet = \
 b85alphabet = \
     "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ" \
     "[\\]^_`abcdefghijklmnopqrstu"
+
+
+def parse_quick_check():
+    '''The file DerivedNormalizationProps.txt defines all the code points with
+    NFC_Quick_Check values of No or Maybe. Parse these out, so that we can
+    exclude them from the Twitter alphabet.'''
+    bad_code_points = set()
+    with open('DerivedNormalizationProps.txt') as f:
+        for line in f:
+            # Strip comments.
+            comment_start = line.find('#')
+            if comment_start != -1:
+                line = line[:comment_start]
+            # Skip unrealted lines.
+            if 'NFC_QC' not in line:
+                continue
+            # Parse out the code point or range of code points.
+            hex_points = line.split(';')[0].strip().split('..')
+            points = [int(point, 16) for point in hex_points]
+            # Add single code points, or every code point in the given range
+            # (inclusive).
+            if len(points) == 1:
+                bad_code_points.add(points[0])
+            else:
+                for i in range(points[0], points[1]+1):
+                    bad_code_points.add(i)
+    return bad_code_points
+
+
+def get_twitter_alphabet():
+    '''We want to use every possible code point we can. That means starting at
+    0 and going all the way up to 0x10ffff, the largest encodable value.
+    Because Twitter does NFC Unicode normalization, we need to omit characters
+    that don't have NFC_Quick_Check=Yes property.'''
+    bad_code_points = parse_quick_check()
+    buffer = io.StringIO()
+    for i in range(0x110000):
+        if i in bad_code_points:
+            continue
+        buffer.write(chr(i))
+    return buffer.getvalue()
 
 
 def min_chars_size(alphabet_size, bytes_size):
