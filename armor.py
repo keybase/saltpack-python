@@ -22,6 +22,7 @@ Options:
     --base85             use the Base85 alphabet and 4-byte blocks
     -b --block=<size>    the block size
     --shift              shift the encoded number left as far as possible
+    --twitter            fit as much as possible into 140 characters
     --raw                omit 'BEGIN ARMOR.' and 'END ARMOR.'
 '''
 
@@ -277,6 +278,8 @@ def get_block_size(args):
         block_size = 3
     elif args['--base85']:
         block_size = 4
+    elif args['--twitter']:
+        block_size = 351
     return block_size
 
 
@@ -288,6 +291,8 @@ def get_alphabet(args):
         alphabet = b64alphabet
     elif args['--base85']:
         alphabet = b85alphabet
+    elif args['--twitter']:
+        alphabet = get_twitter_alphabet()
     return alphabet
 
 
