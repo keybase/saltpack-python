@@ -3,6 +3,7 @@
 import binascii
 import base64
 from hashlib import sha512
+import hmac
 import io
 import json
 import os
@@ -135,8 +136,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
             nonce=payload_nonce,
             key=encryption_key)
         payload_tag = payload_secretbox[:16]  # the Poly1305 authenticator
-        stripped_payload_secretbox = payload_secretbox[16:]
-        tag_boxes = []
+        tag_authenticators = []
         for recipient_public in recipient_public_keys:
             # Encrypt the payload_tag for each recipient. This isn't because we
             # want to keep the tag secret, but because:
@@ -148,10 +148,10 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
                 message=payload_tag,
                 nonce=payload_nonce,
                 k=beforenm)
-            tag_boxes.append(tag_box)
+            tag_authenticators.append(tag_box[:16])
         packet = [
-            tag_boxes,
-            stripped_payload_secretbox,
+            tag_authenticators,
+            payload_secretbox,
         ]
         output.write(umsgpack.packb(packet))
 
@@ -213,17 +213,20 @@ def decrypt(input, recipient_private, *, debug=False):
         if debug:
             print('Packet: ', end='', file=sys.stderr)
             print(json_repr(packet), file=sys.stderr)
-        [tag_boxes, stripped_payload_secretbox] = packet
-        tag_box = tag_boxes[recipient_index]
+        [tag_authenticators, payload_secretbox] = packet
+        tag_authenticator = tag_authenticators[recipient_index]
 
-        # Open the tag box.
-        payload_tag = nacl.bindings.crypto_box_open_afternm(
-            ciphertext=tag_box,
+        # Verify the secretbox tag.
+        payload_tag = payload_secretbox[:16]
+        tag_box = nacl.bindings.crypto_box_afternm(
+            message=payload_tag,
             nonce=payload_nonce,
             k=sender_beforenm)
+        out_authenticator = tag_box[:16]
+        assert hmac.compare_digest(out_authenticator, tag_authenticator), \
+            "The payload tag authenticator doesn't match."
 
-        # Prepend the tag and open the payload secretbox.
-        payload_secretbox = payload_tag + stripped_payload_secretbox
+        # Open the payload secretbox.
         chunk = nacl.bindings.crypto_secretbox_open(
             ciphertext=payload_secretbox,
             nonce=payload_nonce,
