@@ -6,14 +6,14 @@ import io
 import os
 import umsgpack
 
-import nacl.bindings
+import libnacl
 
 # ./encrypt.py
 from encrypt import json_repr, chunks_with_empty
 
 
 def sign(message):
-    real_pk, real_sk = nacl.bindings.crypto_sign_keypair()
+    real_pk, real_sk = libnacl.crypto_sign_keypair()
     salt = os.urandom(16)
     header = [
         "SaltBox",
@@ -28,7 +28,7 @@ def sign(message):
     for chunk in chunks_with_empty(message, 1000000):
         payload_digest = hashlib.sha512(salt + chunk).digest()
         payload_sig_text = b"SaltBox\0attached signature\0" + payload_digest
-        payload_sig = nacl.bindings.crypto_sign(payload_sig_text, real_sk)
+        payload_sig = libnacl.crypto_sign(payload_sig_text, real_sk)
         detached_payload_sig = payload_sig[:64]
         packet = [
             detached_payload_sig,
@@ -42,11 +42,11 @@ def sign(message):
 
 
 def detached_sign(message):
-    real_pk, real_sk = nacl.bindings.crypto_sign_keypair()
+    real_pk, real_sk = libnacl.crypto_sign_keypair()
     salt = os.urandom(16)
     message_digest = hashlib.sha512(salt + message).digest()
     message_sig_text = b"SaltBox\0detached signature\0" + message_digest
-    message_sig = nacl.bindings.crypto_sign(message_sig_text, real_sk)
+    message_sig = libnacl.crypto_sign(message_sig_text, real_sk)
     detached_message_sig = message_sig[:64]
 
     header = [
@@ -82,7 +82,7 @@ def verify(signed_message):
         payload_digest = hashlib.sha512(salt + chunk).digest()
         payload_sig_text = b"SaltBox\0attached signature\0" + payload_digest
         payload_sig = detached_payload_sig + payload_sig_text
-        nacl.bindings.crypto_sign_open(payload_sig, real_pk)
+        libnacl.crypto_sign_open(payload_sig, real_pk)
         if chunk == b"":
             break
         output.write(chunk)
@@ -107,7 +107,7 @@ def detached_verify(message, signature):
     message_digest = hashlib.sha512(salt + message).digest()
     message_sig_text = b"SaltBox\0detached signature\0" + message_digest
     message_sig = detached_message_sig + message_sig_text
-    nacl.bindings.crypto_sign_open(message_sig, real_pk)
+    libnacl.crypto_sign_open(message_sig, real_pk)
 
     print(message)
     return message

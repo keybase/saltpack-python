@@ -10,8 +10,7 @@ import os
 import sys
 
 import umsgpack
-import nacl.bindings
-from nacl.exceptions import CryptoError
+import libnacl
 import docopt
 
 import armor
@@ -83,9 +82,9 @@ def counter(i):
 # -----------------------
 
 def encrypt(sender_private, recipient_public_keys, message, chunk_size):
-    sender_public = nacl.bindings.crypto_scalarmult_base(sender_private)
+    sender_public = libnacl.crypto_scalarmult_base(sender_private)
     ephemeral_private = os.urandom(32)
-    ephemeral_public = nacl.bindings.crypto_scalarmult_base(ephemeral_private)
+    ephemeral_public = libnacl.crypto_scalarmult_base(ephemeral_private)
     nonce_prefix_preimage = (
         b"SaltPack\0" +
         b"encryption nonce prefix\0" +
@@ -103,8 +102,8 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         # The recipient box holds the sender's long-term public key and the
         # symmetric message encryption key. It's encrypted for each recipient
         # with the ephemeral private key.
-        recipient_box = nacl.bindings.crypto_box(
-            message=keys_bytes,
+        recipient_box = libnacl.crypto_box(
+            msg=keys_bytes,
             nonce=header_nonce,
             pk=recipient_public,
             sk=ephemeral_private)
@@ -113,7 +112,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         recipient_pairs.append(pair)
 
         # Precompute the shared secret to speed up payload packet encryption.
-        beforenm = nacl.bindings.crypto_box_beforenm(
+        beforenm = libnacl.crypto_box_beforenm(
             pk=recipient_public,
             sk=sender_private)
         recipient_beforenms[recipient_public] = beforenm
@@ -131,8 +130,8 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
     # Write the chunks.
     for packetnum, chunk in enumerate(chunks_with_empty(message, chunk_size)):
         payload_nonce = nonce_prefix + counter(packetnum + 2)
-        payload_secretbox = nacl.bindings.crypto_secretbox(
-            message=chunk,
+        payload_secretbox = libnacl.crypto_secretbox(
+            msg=chunk,
             nonce=payload_nonce,
             key=encryption_key)
         payload_tag = payload_secretbox[:16]  # the Poly1305 authenticator
@@ -144,8 +143,8 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
             #      actually wrote it.
             #   2) We want to force implementations to verify that.
             beforenm = recipient_beforenms[recipient_public]
-            tag_box = nacl.bindings.crypto_box_afternm(
-                message=payload_tag,
+            tag_box = libnacl.crypto_box_afternm(
+                msg=payload_tag,
                 nonce=payload_nonce,
                 k=beforenm)
             tag_authenticators.append(tag_box[:16])
@@ -177,7 +176,7 @@ def decrypt(input, recipient_private, *, debug=False):
         b"encryption nonce prefix\0" +
         ephemeral_public)
     nonce_prefix = sha512(nonce_prefix_preimage).digest()[:16]
-    ephemeral_beforenm = nacl.bindings.crypto_box_beforenm(
+    ephemeral_beforenm = libnacl.crypto_box_beforenm(
         pk=ephemeral_public,
         sk=recipient_private)
 
@@ -185,12 +184,12 @@ def decrypt(input, recipient_private, *, debug=False):
     for recipient_index, pair in enumerate(recipient_pairs):
         [_, recipient_box] = pair
         try:
-            keys_bytes = nacl.bindings.crypto_box_open_afternm(
-                ciphertext=recipient_box,
+            keys_bytes = libnacl.crypto_box_open_afternm(
+                ctxt=recipient_box,
                 nonce=nonce_prefix + counter(0),
                 k=ephemeral_beforenm)
             break
-        except CryptoError:
+        except libnacl.CryptError:
             continue
     else:
         raise RuntimeError('Failed to find matching recipient.')
@@ -200,7 +199,7 @@ def decrypt(input, recipient_private, *, debug=False):
     sender_public, encryption_key = keys
 
     # Precompute the shared secret to speed up payload decryption.
-    sender_beforenm = nacl.bindings.crypto_box_beforenm(
+    sender_beforenm = libnacl.crypto_box_beforenm(
         pk=sender_public,
         sk=recipient_private)
 
@@ -218,8 +217,8 @@ def decrypt(input, recipient_private, *, debug=False):
 
         # Verify the secretbox tag.
         payload_tag = payload_secretbox[:16]
-        tag_box = nacl.bindings.crypto_box_afternm(
-            message=payload_tag,
+        tag_box = libnacl.crypto_box_afternm(
+            msg=payload_tag,
             nonce=payload_nonce,
             k=sender_beforenm)
         out_authenticator = tag_box[:16]
@@ -227,8 +226,8 @@ def decrypt(input, recipient_private, *, debug=False):
             "The payload tag authenticator doesn't match."
 
         # Open the payload secretbox.
-        chunk = nacl.bindings.crypto_secretbox_open(
-            ciphertext=payload_secretbox,
+        chunk = libnacl.crypto_secretbox_open(
+            ctxt=payload_secretbox,
             nonce=payload_nonce,
             key=encryption_key)
         output.write(chunk)
@@ -264,7 +263,7 @@ def get_recipients(args):
     else:
         # Without explicit recipients, just send to yourself.
         private = get_private(args)
-        public = nacl.bindings.crypto_scalarmult_base(private)
+        public = libnacl.crypto_scalarmult_base(private)
         return [public]
 
 
