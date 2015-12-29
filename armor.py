@@ -3,6 +3,7 @@
 import docopt
 import io
 import math
+import os
 import sys
 import unicodedata
 
@@ -35,13 +36,16 @@ b85alphabet = \
     "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ" \
     "[\\]^_`abcdefghijklmnopqrstu"
 
+here = os.path.dirname(__file__)
+props = os.path.join(here, 'unicode/DerivedNormalizationProps.txt')
+
 
 def parse_quick_check():
     '''The file DerivedNormalizationProps.txt defines all the code points with
     NFC_Quick_Check values of No or Maybe. Parse these out, so that we can
     exclude them from the Twitter alphabet.'''
     bad_code_points = set()
-    with open('DerivedNormalizationProps.txt') as f:
+    with open(props) as f:
         for line in f:
             # Strip comments.
             comment_start = line.find('#')
