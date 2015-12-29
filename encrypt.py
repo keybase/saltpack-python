@@ -2,8 +2,6 @@
 
 import binascii
 import base64
-from hashlib import sha512
-import hmac
 import io
 import json
 import os
@@ -89,7 +87,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         b"SaltPack\0" +
         b"encryption nonce prefix\0" +
         ephemeral_public)
-    nonce_prefix = sha512(nonce_prefix_preimage).digest()[:16]
+    nonce_prefix = libnacl.crypto_hash(nonce_prefix_preimage)[:16]
     encryption_key = os.urandom(32)
 
     keys = [sender_public, encryption_key]
@@ -134,22 +132,18 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
             msg=chunk,
             nonce=payload_nonce,
             key=encryption_key)
-        payload_tag = payload_secretbox[:16]  # the Poly1305 authenticator
-        tag_authenticators = []
+        # Authenticate the hash of the payload for each recipient.
+        payload_hash = libnacl.crypto_hash(payload_secretbox)
+        hash_authenticators = []
         for recipient_public in recipient_public_keys:
-            # Encrypt the payload_tag for each recipient. This isn't because we
-            # want to keep the tag secret, but because:
-            #   1) We want to authenticate the tag, to prove the sender
-            #      actually wrote it.
-            #   2) We want to force implementations to verify that.
             beforenm = recipient_beforenms[recipient_public]
-            tag_box = libnacl.crypto_box_afternm(
-                msg=payload_tag,
+            hash_box = libnacl.crypto_box_afternm(
+                msg=payload_hash,
                 nonce=payload_nonce,
                 k=beforenm)
-            tag_authenticators.append(tag_box[:16])
+            hash_authenticators.append(hash_box[:16])
         packet = [
-            tag_authenticators,
+            hash_authenticators,
             payload_secretbox,
         ]
         output.write(umsgpack.packb(packet))
@@ -175,7 +169,7 @@ def decrypt(input, recipient_private, *, debug=False):
         b"SaltPack\0" +
         b"encryption nonce prefix\0" +
         ephemeral_public)
-    nonce_prefix = sha512(nonce_prefix_preimage).digest()[:16]
+    nonce_prefix = libnacl.crypto_hash(nonce_prefix_preimage)[:16]
     ephemeral_beforenm = libnacl.crypto_box_beforenm(
         pk=ephemeral_public,
         sk=recipient_private)
@@ -212,18 +206,19 @@ def decrypt(input, recipient_private, *, debug=False):
         if debug:
             print('Packet: ', end='', file=sys.stderr)
             print(json_repr(packet), file=sys.stderr)
-        [tag_authenticators, payload_secretbox] = packet
-        tag_authenticator = tag_authenticators[recipient_index]
+        [hash_authenticators, payload_secretbox] = packet
+        hash_authenticator = hash_authenticators[recipient_index]
 
-        # Verify the secretbox tag.
-        payload_tag = payload_secretbox[:16]
-        tag_box = libnacl.crypto_box_afternm(
-            msg=payload_tag,
+        # Verify the secretbox hash.
+        payload_hash = libnacl.crypto_hash(payload_secretbox)
+        hash_box = libnacl.crypto_box_afternm(
+            msg=payload_hash,
             nonce=payload_nonce,
             k=sender_beforenm)
-        out_authenticator = tag_box[:16]
-        assert hmac.compare_digest(out_authenticator, tag_authenticator), \
-            "The payload tag authenticator doesn't match."
+        our_authenticator = hash_box[:16]
+        verified = libnacl.crypto_verify_16(
+            our_authenticator, hash_authenticator)
+        assert verified, "The payload hash authenticator doesn't match."
 
         # Open the payload secretbox.
         chunk = libnacl.crypto_secretbox_open(
