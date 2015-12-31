@@ -1,7 +1,6 @@
 #! /usr/bin/env python3
 
 import binascii
-import base64
 import io
 import json
 import os
@@ -65,7 +64,7 @@ def json_repr(obj):
                 obj.decode('utf8')
                 return repr(obj)
             except UnicodeDecodeError:
-                return repr(base64.b64encode(obj))
+                return tohex(obj)
         else:
             return obj
     return json.dumps(_recurse_repr(obj), indent='  ')
@@ -74,6 +73,10 @@ def json_repr(obj):
 def counter(i):
     'Turn the number into a 64-bit big-endian unsigned representation.'
     return i.to_bytes(8, 'big')
+
+
+def tohex(b):
+    return binascii.hexlify(b).decode()
 
 
 # All the important bits!
@@ -156,8 +159,7 @@ def decrypt(input, recipient_private, *, debug=False):
     # Parse the header.
     header = umsgpack.unpack(stream)
     if debug:
-        print('Header: ', end='', file=sys.stderr)
-        print(json_repr(header), file=sys.stderr)
+        print('header:', json_repr(header), file=sys.stderr)
     [
         format_name,
         [major_version, minor_version],
@@ -187,6 +189,8 @@ def decrypt(input, recipient_private, *, debug=False):
             continue
     else:
         raise RuntimeError('Failed to find matching recipient.')
+    if debug:
+        print('recipient index:', recipient_index, file=sys.stderr)
 
     # Unpack the sender key and the message encryption key.
     keys = umsgpack.unpackb(keys_bytes)
@@ -204,7 +208,7 @@ def decrypt(input, recipient_private, *, debug=False):
         payload_nonce = nonce_prefix + counter(packetnum)
         packet = umsgpack.unpack(stream)
         if debug:
-            print('Packet: ', end='', file=sys.stderr)
+            print('packet: ', end='', file=sys.stderr)
             print(json_repr(packet), file=sys.stderr)
         [hash_authenticators, payload_secretbox] = packet
         hash_authenticator = hash_authenticators[recipient_index]
@@ -216,6 +220,8 @@ def decrypt(input, recipient_private, *, debug=False):
             nonce=payload_nonce,
             k=sender_beforenm)
         our_authenticator = hash_box[:16]
+        print('payload hash', tohex(payload_hash), file=sys.stderr)
+        print('hash authenticator:', tohex(our_authenticator), file=sys.stderr)
         verified = libnacl.crypto_verify_16(
             our_authenticator, hash_authenticator)
         assert verified, "The payload hash authenticator doesn't match."
@@ -227,7 +233,7 @@ def decrypt(input, recipient_private, *, debug=False):
             key=encryption_key)
         output.write(chunk)
         if debug:
-            print('Chunk:', chunk, file=sys.stderr)
+            print('chunk:', chunk, file=sys.stderr)
 
         # The empty chunk signifies the end of the message.
         if chunk == b'':
