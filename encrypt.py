@@ -183,7 +183,7 @@ def decrypt(input, recipient_private, *, debug=False):
                 nonce=nonce_prefix + counter(0),
                 k=ephemeral_beforenm)
             break
-        except libnacl.CryptError:
+        except ValueError:
             continue
     else:
         raise RuntimeError('Failed to find matching recipient.')
