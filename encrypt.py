@@ -29,6 +29,8 @@ Options:
 
 FORMAT_VERSION = 1
 
+DEBUG_MODE = False
+
 # Hardcode the keys for everyone involved.
 # ----------------------------------------
 
@@ -79,6 +81,17 @@ def tohex(b):
     return binascii.hexlify(b).decode()
 
 
+def debug(*args):
+    # hexify any bytes values
+    args = list(args)
+    for i, arg in enumerate(args):
+        if isinstance(arg, bytes):
+            args[i] = tohex(args[i])
+    # print to stderr, if we're in debug mode
+    if DEBUG_MODE:
+        print(*args, file=sys.stderr)
+
+
 # All the important bits!
 # -----------------------
 
@@ -91,9 +104,9 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         b"encryption nonce prefix\0" +
         ephemeral_public)
     nonce_prefix = libnacl.crypto_hash(nonce_prefix_preimage)[:16]
-    encryption_key = os.urandom(32)
+    message_key = os.urandom(32)
 
-    keys = [sender_public, encryption_key]
+    keys = [sender_public, message_key]
     keys_bytes = umsgpack.packb(keys)
     header_nonce = nonce_prefix + counter(0)
 
@@ -134,7 +147,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         payload_secretbox = libnacl.crypto_secretbox(
             msg=chunk,
             nonce=payload_nonce,
-            key=encryption_key)
+            key=message_key)
         # Authenticate the hash of the payload for each recipient.
         payload_hash = libnacl.crypto_hash(payload_secretbox)
         hash_authenticators = []
@@ -154,12 +167,11 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
     return output.getvalue()
 
 
-def decrypt(input, recipient_private, *, debug=False):
+def decrypt(input, recipient_private):
     stream = io.BytesIO(input)
     # Parse the header.
     header = umsgpack.unpack(stream)
-    if debug:
-        print('header:', json_repr(header), file=sys.stderr)
+    debug('header:', json_repr(header))
     [
         format_name,
         [major_version, minor_version],
@@ -175,6 +187,8 @@ def decrypt(input, recipient_private, *, debug=False):
     ephemeral_beforenm = libnacl.crypto_box_beforenm(
         pk=ephemeral_public,
         sk=recipient_private)
+    header_nonce = nonce_prefix + counter(0)
+    debug('nonce:', header_nonce)
 
     # Try decrypting each sender box, until we find the one that works.
     for recipient_index, pair in enumerate(recipient_pairs):
@@ -182,7 +196,7 @@ def decrypt(input, recipient_private, *, debug=False):
         try:
             keys_bytes = libnacl.crypto_box_open_afternm(
                 ctxt=recipient_box,
-                nonce=nonce_prefix + counter(0),
+                nonce=header_nonce,
                 k=ephemeral_beforenm)
             break
         except ValueError:
@@ -192,16 +206,17 @@ def decrypt(input, recipient_private, *, debug=False):
 
     # Unpack the sender key and the message encryption key.
     keys = umsgpack.unpackb(keys_bytes)
-    sender_public, encryption_key = keys
+    sender_public, message_key = keys
 
     # Precompute the shared secret to speed up payload decryption.
     sender_beforenm = libnacl.crypto_box_beforenm(
         pk=sender_public,
         sk=recipient_private)
 
-    if debug:
-        print('nonce prefix', tohex(nonce_prefix), file=sys.stderr)
-        print('recipient index:', recipient_index, file=sys.stderr)
+    debug('nonce prefix', nonce_prefix)
+    debug('recipient index:', recipient_index)
+    debug('sender key:', sender_public)
+    debug('message key:', message_key)
 
     # Decrypt each of the packets.
     output = io.BytesIO()
@@ -209,9 +224,7 @@ def decrypt(input, recipient_private, *, debug=False):
     while True:
         payload_nonce = nonce_prefix + counter(packetnum)
         packet = umsgpack.unpack(stream)
-        if debug:
-            print('packet: ', end='', file=sys.stderr)
-            print(json_repr(packet), file=sys.stderr)
+        debug('packet:', json_repr(packet))
         [hash_authenticators, payload_secretbox] = packet
         hash_authenticator = hash_authenticators[recipient_index]
 
@@ -222,8 +235,11 @@ def decrypt(input, recipient_private, *, debug=False):
             nonce=payload_nonce,
             k=sender_beforenm)
         our_authenticator = hash_box[:16]
-        print('payload hash', tohex(payload_hash), file=sys.stderr)
-        print('hash authenticator:', tohex(our_authenticator), file=sys.stderr)
+
+        debug('nonce:', payload_nonce)
+        debug('payload hash', payload_hash)
+        debug('hash authenticator:', our_authenticator)
+
         verified = libnacl.crypto_verify_16(
             our_authenticator, hash_authenticator)
         assert verified, "The payload hash authenticator doesn't match."
@@ -232,10 +248,10 @@ def decrypt(input, recipient_private, *, debug=False):
         chunk = libnacl.crypto_secretbox_open(
             ctxt=payload_secretbox,
             nonce=payload_nonce,
-            key=encryption_key)
+            key=message_key)
         output.write(chunk)
-        if debug:
-            print('chunk:', chunk, file=sys.stderr)
+
+        debug('chunk:', repr(chunk))
 
         # The empty chunk signifies the end of the message.
         if chunk == b'':
@@ -297,12 +313,14 @@ def do_decrypt(args):
     if args['--armor']:
         message = armor.dearmor(message.decode())
     private = get_private(args)
-    decoded_message = decrypt(message, private, debug=args['--debug'])
+    decoded_message = decrypt(message, private)
     sys.stdout.buffer.write(decoded_message)
 
 
 def main():
+    global DEBUG_MODE
     args = docopt.docopt(__doc__)
+    DEBUG_MODE = args['--debug']
     if args['encrypt']:
         do_encrypt(args)
     else:
