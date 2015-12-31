@@ -142,8 +142,8 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
     output.write(umsgpack.packb(header))
 
     # Write the chunks.
-    for packetnum, chunk in enumerate(chunks_with_empty(message, chunk_size)):
-        payload_nonce = nonce_prefix + counter(packetnum + 2)
+    for chunknum, chunk in enumerate(chunks_with_empty(message, chunk_size)):
+        payload_nonce = nonce_prefix + counter(chunknum + 1)
         payload_secretbox = libnacl.crypto_secretbox(
             msg=chunk,
             nonce=payload_nonce,
@@ -220,7 +220,7 @@ def decrypt(input, recipient_private):
 
     # Decrypt each of the packets.
     output = io.BytesIO()
-    packetnum = 2
+    packetnum = 1
     while True:
         payload_nonce = nonce_prefix + counter(packetnum)
         packet = umsgpack.unpack(stream)
