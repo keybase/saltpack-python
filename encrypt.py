@@ -189,8 +189,6 @@ def decrypt(input, recipient_private, *, debug=False):
             continue
     else:
         raise RuntimeError('Failed to find matching recipient.')
-    if debug:
-        print('recipient index:', recipient_index, file=sys.stderr)
 
     # Unpack the sender key and the message encryption key.
     keys = umsgpack.unpackb(keys_bytes)
@@ -200,6 +198,10 @@ def decrypt(input, recipient_private, *, debug=False):
     sender_beforenm = libnacl.crypto_box_beforenm(
         pk=sender_public,
         sk=recipient_private)
+
+    if debug:
+        print('nonce prefix', tohex(nonce_prefix), file=sys.stderr)
+        print('recipient index:', recipient_index, file=sys.stderr)
 
     # Decrypt each of the packets.
     output = io.BytesIO()
