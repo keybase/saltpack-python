@@ -223,6 +223,9 @@ def chunk_string_ignoring_whitespace(s, size):
 
 
 def read_between_periods(s):
+    # This is a very forgiving parser. It doesn't enforce that the message
+    # starts with "BEGIN..." or ends with "END...". We should make this
+    # stricter eventually.
     start = s.find('.')
     if start == -1:
         raise Exception("No period found in input.")
