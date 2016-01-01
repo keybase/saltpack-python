@@ -276,7 +276,7 @@ def get_recipients(args):
         recipients = []
         for recipient in args['<recipients>']:
             key = binascii.unhexlify(recipient)
-            assert len(recipient) == 32
+            assert len(key) == 32
             recipients.append(key)
         return recipients
     else:
