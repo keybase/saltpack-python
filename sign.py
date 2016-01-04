@@ -21,7 +21,7 @@ Usage:
     sign.py sign [<private>] [options]
     sign.py verify [options]
 
-If no private key is given, the default is 64 zero bytes.
+If no private key is given, the default is random.
 
 Options:
     -a --armor             encode/decode with SaltPack armor
@@ -167,7 +167,7 @@ def do_sign(args):
         private_key = binascii.unhexlify(args['<private>'])
         assert len(private_key) == 64
     else:
-        private_key = b'\0'*64
+        private_key = libnacl.crypto_sign_keypair()[1]
     # Get the chunk size.
     if args['--chunk']:
         chunk_size = int(args['--chunk'])
@@ -190,7 +190,10 @@ def do_verify(args):
     if detached:
         with open(detached, 'rb') as f:
             signature = f.read()
-        message = sys.stdin.buffer.read()
+        if ['--message']:
+            message = args['--message'].encode()
+        else:
+            message = sys.stdin.buffer.read()
     else:
         signature = sys.stdin.buffer.read()
     # Dearmor the signature.
