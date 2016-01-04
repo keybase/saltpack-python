@@ -28,4 +28,4 @@ assert inputstr == raw_decoded
 
 efficient = sh('./armor.py efficient 64').read()
 print(efficient)
-assert re.search('4 chars.*3 bytes', efficient)
+assert re.search('3 bytes.*4 chars', efficient)
