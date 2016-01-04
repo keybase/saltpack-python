@@ -1,126 +1,219 @@
 #! /usr/bin/env python3
 
-import base64
+import binascii
 import hashlib
 import io
 import os
+import sys
 import umsgpack
 
+import docopt
 import libnacl
 
 # ./encrypt.py
 from encrypt import json_repr, chunks_with_empty
 
+# ./armor.py
+import armor
 
-def sign(message):
-    real_pk, real_sk = libnacl.crypto_sign_keypair()
+__doc__ = '''\
+Usage:
+    sign.py sign [<private>] [options]
+    sign.py verify [options]
+
+If no private key is given, the default is 64 zero bytes.
+
+Options:
+    -a --armor             encode/decode with SaltPack armor
+    -c --chunk=<size>      size of payload chunks, default 1 MB
+    -d --detached          make a detached signature
+    -m --message=<msg>     message text, instead of reading stdin
+    -s --signature=<file>  a detached signature to verify with
+    --debug                debug mode
+'''
+
+DEBUG_MODE = False
+
+
+def tohex(b):
+    return binascii.hexlify(b).decode()
+
+
+def debug(*args):
+    # hexify any bytes values
+    args = list(args)
+    for i, arg in enumerate(args):
+        if isinstance(arg, bytes):
+            args[i] = tohex(args[i])
+    # print to stderr, if we're in debug mode
+    if DEBUG_MODE:
+        print(*args, file=sys.stderr)
+
+
+def sign_attached(message, private_key, chunk_size):
+    public_key = private_key[32:]
     salt = os.urandom(16)
     header = [
         "SaltBox",
         [1, 0],
         1,
-        real_pk,
+        public_key,
         salt,
         ]
     output = io.BytesIO()
     umsgpack.pack(header, output)
 
-    for chunk in chunks_with_empty(message, 1000000):
-        payload_digest = hashlib.sha512(salt + chunk).digest()
+    packetnum = 0
+    for chunk in chunks_with_empty(message, chunk_size):
+        packetnum_64 = packetnum.to_bytes(8, 'big')
+        payload_digest = hashlib.sha512(salt + packetnum_64 + chunk).digest()
         payload_sig_text = b"SaltBox\0attached signature\0" + payload_digest
-        payload_sig = libnacl.crypto_sign(payload_sig_text, real_sk)
+        payload_sig = libnacl.crypto_sign(payload_sig_text, private_key)
         detached_payload_sig = payload_sig[:64]
         packet = [
             detached_payload_sig,
             chunk,
         ]
         umsgpack.pack(packet, output)
+        packetnum += 1
 
-    output_bytes = output.getvalue()
-    print(base64.b64encode(output_bytes))
-    return output_bytes
+    return output.getvalue()
 
 
-def detached_sign(message):
-    real_pk, real_sk = libnacl.crypto_sign_keypair()
+def sign_detached(message, private_key):
+    public_key = private_key[32:]
     salt = os.urandom(16)
     message_digest = hashlib.sha512(salt + message).digest()
     message_sig_text = b"SaltBox\0detached signature\0" + message_digest
-    message_sig = libnacl.crypto_sign(message_sig_text, real_sk)
+    message_sig = libnacl.crypto_sign(message_sig_text, private_key)
     detached_message_sig = message_sig[:64]
 
     header = [
         "SaltBox",
         [1, 0],
         2,
-        real_pk,
+        public_key,
         salt,
         detached_message_sig,
         ]
-    output_bytes = umsgpack.packb(header)
-    print(base64.b64encode(output_bytes))
-    return output_bytes
+    return umsgpack.packb(header)
 
 
-def verify(signed_message):
-    input = io.BytesIO(signed_message)
+def verify_attached(message):
+    input = io.BytesIO(message)
     output = io.BytesIO()
     header = umsgpack.unpack(input)
-    print(json_repr(header))
+    debug(json_repr(header))
     [
         name,
         [major, minor],
         mode,
-        real_pk,
+        public_key,
         salt,
+        *_,
     ] = header
 
+    packetnum = 0
     while True:
         payload_packet = umsgpack.unpack(input)
-        print(json_repr(payload_packet))
+        debug(json_repr(payload_packet))
         [detached_payload_sig, chunk] = payload_packet
-        payload_digest = hashlib.sha512(salt + chunk).digest()
+        packetnum_64 = packetnum.to_bytes(8, 'big')
+        payload_digest = hashlib.sha512(salt + packetnum_64 + chunk).digest()
         payload_sig_text = b"SaltBox\0attached signature\0" + payload_digest
         payload_sig = detached_payload_sig + payload_sig_text
-        libnacl.crypto_sign_open(payload_sig, real_pk)
+        libnacl.crypto_sign_open(payload_sig, public_key)
         if chunk == b"":
             break
         output.write(chunk)
+        packetnum += 1
 
     verified_message = output.getvalue()
-    print(verified_message)
+    debug(verified_message)
     return verified_message
 
 
-def detached_verify(message, signature):
+def verify_detached(message, signature):
     header = umsgpack.unpackb(signature)
-    print(json_repr(header))
+    debug(json_repr(header))
     [
         name,
         [major, minor],
         mode,
-        real_pk,
+        public_key,
         salt,
         detached_message_sig,
+        *_,
     ] = header
 
     message_digest = hashlib.sha512(salt + message).digest()
     message_sig_text = b"SaltBox\0detached signature\0" + message_digest
     message_sig = detached_message_sig + message_sig_text
-    libnacl.crypto_sign_open(message_sig, real_pk)
+    libnacl.crypto_sign_open(message_sig, public_key)
 
-    print(message)
+    debug(message)
     return message
 
 
-def main():
-    default_message = b'The Magic Words are Squeamish Ossifrage'
-    signed_message = sign(default_message)
-    verify(signed_message)
+def do_sign(args):
+    message = args['--message']
+    # Get the message bytes.
+    if message is None:
+        encoded_message = sys.stdin.buffer.read()
+    else:
+        encoded_message = message.encode('utf8')
+    # Get the private key.
+    if args['<private>']:
+        private_key = binascii.unhexlify(args['<private>'])
+        assert len(private_key) == 64
+    else:
+        private_key = b'\0'*64
+    # Get the chunk size.
+    if args['--chunk']:
+        chunk_size = int(args['--chunk'])
+    else:
+        chunk_size = 10**6
+    # Sign the message.
+    if args['--detached']:
+        output = sign_detached(encoded_message, private_key)
+    else:
+        output = sign_attached(encoded_message, private_key, chunk_size)
+    # Armor the message.
+    if args['--armor']:
+        output = (armor.armor(output) + '\n').encode()
+    sys.stdout.buffer.write(output)
 
-    print()
-    detached_sig = detached_sign(default_message)
-    detached_verify(default_message, detached_sig)
+
+def do_verify(args):
+    detached = args['--signature']
+    # Read the signature.
+    if detached:
+        with open(detached, 'rb') as f:
+            signature = f.read()
+        message = sys.stdin.buffer.read()
+    else:
+        signature = sys.stdin.buffer.read()
+    # Dearmor the signature.
+    if args['--armor']:
+        signature = armor.dearmor(signature.decode())
+    # Verify the message.
+    if detached:
+        output = verify_detached(message, signature)
+    else:
+        output = verify_attached(signature)
+    sys.stdout.buffer.write(output)
+
+
+def main():
+    global DEBUG_MODE
+    args = docopt.docopt(__doc__)
+    DEBUG_MODE = args['--debug']
+
+    if args['sign']:
+        do_sign(args)
+    else:
+        do_verify(args)
+
 
 if __name__ == '__main__':
     main()

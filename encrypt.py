@@ -17,7 +17,7 @@ Usage:
     encrypt.py encrypt [<private>] [<recipients>...] [options]
     encrypt.py decrypt [<private>] [options]
 
-If no private key is given, the default is 32 zero bytes. If no recipient is
+If no private key is given, the default is 32 zero bytes. If no recipients are
 given, the default is the sender's own public key.
 
 Options:
