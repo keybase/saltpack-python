@@ -28,7 +28,7 @@ Options:
     -c --chunk=<size>      size of payload chunks, default 1 MB
     -d --detached          make a detached signature
     -m --message=<msg>     message text, instead of reading stdin
-    -s --signature=<file>  a detached signature to verify with
+    -s --signature=<file>  verify with a detached signature
     --debug                debug mode
 '''
 
@@ -185,26 +185,30 @@ def do_sign(args):
 
 
 def do_verify(args):
-    detached = args['--signature']
-    # Read the signature.
-    if detached:
-        with open(detached, 'rb') as f:
-            signature = f.read()
-        if args['--message']:
-            message = args['--message'].encode()
-        else:
-            message = sys.stdin.buffer.read()
+    # Read the message from stdin or --message. In attached mode this is the
+    # attached signature, but in detached mode this is the plaintext, and the
+    # signature needs to be specified with --signature.
+    if args['--message']:
+        message = args['--message'].encode()
     else:
-        signature = sys.stdin.buffer.read()
+        message = sys.stdin.buffer.read()
+    # In detached mode, read the signature.
+    signature_file = args['--signature']
+    detached_mode = signature_file is not None
+    if detached_mode:
+        with open(signature_file, 'rb') as f:
+            signature = f.read()
+    else:
+        signature = message
     # Dearmor the signature.
     if args['--armor']:
         signature = armor.dearmor(signature.decode())
     # Verify the message.
-    if detached:
-        output = verify_detached(message, signature)
+    if detached_mode:
+        verify_detached(message, signature)
     else:
         output = verify_attached(signature)
-    sys.stdout.buffer.write(output)
+        sys.stdout.buffer.write(output)
 
 
 def main():
