@@ -52,13 +52,13 @@ def debug(*args):
 
 def sign_attached(message, private_key, chunk_size):
     public_key = private_key[32:]
-    salt = os.urandom(16)
+    nonce = os.urandom(16)
     header = [
         "SaltBox",
         [1, 0],
         1,
         public_key,
-        salt,
+        nonce,
         ]
     output = io.BytesIO()
     umsgpack.pack(header, output)
@@ -66,7 +66,7 @@ def sign_attached(message, private_key, chunk_size):
     packetnum = 0
     for chunk in chunks_with_empty(message, chunk_size):
         packetnum_64 = packetnum.to_bytes(8, 'big')
-        payload_digest = hashlib.sha512(salt + packetnum_64 + chunk).digest()
+        payload_digest = hashlib.sha512(nonce + packetnum_64 + chunk).digest()
         payload_sig_text = b"SaltBox\0attached signature\0" + payload_digest
         payload_sig = libnacl.crypto_sign(payload_sig_text, private_key)
         detached_payload_sig = payload_sig[:64]
@@ -82,8 +82,8 @@ def sign_attached(message, private_key, chunk_size):
 
 def sign_detached(message, private_key):
     public_key = private_key[32:]
-    salt = os.urandom(16)
-    message_digest = hashlib.sha512(salt + message).digest()
+    nonce = os.urandom(16)
+    message_digest = hashlib.sha512(nonce + message).digest()
     message_sig_text = b"SaltBox\0detached signature\0" + message_digest
     message_sig = libnacl.crypto_sign(message_sig_text, private_key)
     detached_message_sig = message_sig[:64]
@@ -93,7 +93,7 @@ def sign_detached(message, private_key):
         [1, 0],
         2,
         public_key,
-        salt,
+        nonce,
         detached_message_sig,
         ]
     return umsgpack.packb(header)
@@ -109,7 +109,7 @@ def verify_attached(message):
         [major, minor],
         mode,
         public_key,
-        salt,
+        nonce,
         *_,  # ignore additional elements
     ] = header
 
@@ -120,7 +120,7 @@ def verify_attached(message):
         [detached_payload_sig, chunk, *_] = payload_packet
         packetnum_64 = packetnum.to_bytes(8, 'big')
         debug("packet number:", packetnum_64)
-        payload_digest = hashlib.sha512(salt + packetnum_64 + chunk).digest()
+        payload_digest = hashlib.sha512(nonce + packetnum_64 + chunk).digest()
         debug("digest:", payload_digest)
         payload_sig_text = b"SaltBox\0attached signature\0" + payload_digest
         payload_sig = detached_payload_sig + payload_sig_text
@@ -142,12 +142,12 @@ def verify_detached(message, signature):
         [major, minor],
         mode,
         public_key,
-        salt,
+        nonce,
         detached_message_sig,
         *_,  # ignore additional elements
     ] = header
 
-    message_digest = hashlib.sha512(salt + message).digest()
+    message_digest = hashlib.sha512(nonce + message).digest()
     debug("digest:", message_digest)
     message_sig_text = b"SaltBox\0detached signature\0" + message_digest
     message_sig = detached_message_sig + message_sig_text
