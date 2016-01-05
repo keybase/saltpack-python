@@ -189,7 +189,8 @@ def decrypt(input, recipient_private):
         pk=ephemeral_public,
         sk=recipient_private)
     header_nonce = nonce_prefix + counter(0)
-    debug('nonce:', header_nonce)
+    debug('nonce prefix', nonce_prefix)
+    debug('header nonce:', header_nonce)
 
     # Try decrypting each sender box, until we find the one that works.
     for recipient_index, pair in enumerate(recipient_pairs):
@@ -214,7 +215,6 @@ def decrypt(input, recipient_private):
         pk=sender_public,
         sk=recipient_private)
 
-    debug('nonce prefix', nonce_prefix)
     debug('recipient index:', recipient_index)
     debug('sender key:', sender_public)
     debug('message key:', message_key)
@@ -237,7 +237,7 @@ def decrypt(input, recipient_private):
             k=sender_beforenm)
         our_authenticator = hash_box[:16]
 
-        debug('nonce:', payload_nonce)
+        debug('payload nonce:', payload_nonce)
         debug('payload hash', payload_hash)
         debug('hash authenticator:', our_authenticator)
 
