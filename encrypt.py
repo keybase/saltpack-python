@@ -178,6 +178,7 @@ def decrypt(input, recipient_private):
         mode,
         ephemeral_public,
         recipient_pairs,
+        *_,  # ignore additional elements
     ] = header
     nonce_prefix_preimage = (
         b"SaltPack\0" +
@@ -192,7 +193,7 @@ def decrypt(input, recipient_private):
 
     # Try decrypting each sender box, until we find the one that works.
     for recipient_index, pair in enumerate(recipient_pairs):
-        [_, recipient_box] = pair
+        [_, recipient_box, *_] = pair
         try:
             keys_bytes = libnacl.crypto_box_open_afternm(
                 ctxt=recipient_box,
@@ -225,7 +226,7 @@ def decrypt(input, recipient_private):
         payload_nonce = nonce_prefix + counter(packetnum)
         packet = umsgpack.unpack(stream)
         debug('packet:', json_repr(packet))
-        [hash_authenticators, payload_secretbox] = packet
+        [hash_authenticators, payload_secretbox, *_] = packet
         hash_authenticator = hash_authenticators[recipient_index]
 
         # Verify the secretbox hash.

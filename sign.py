@@ -110,14 +110,14 @@ def verify_attached(message):
         mode,
         public_key,
         salt,
-        *_,
+        *_,  # ignore additional elements
     ] = header
 
     packetnum = 0
     while True:
         payload_packet = umsgpack.unpack(input)
         debug("payload packet:", json_repr(payload_packet))
-        [detached_payload_sig, chunk] = payload_packet
+        [detached_payload_sig, chunk, *_] = payload_packet
         packetnum_64 = packetnum.to_bytes(8, 'big')
         debug("packet number:", packetnum_64)
         payload_digest = hashlib.sha512(salt + packetnum_64 + chunk).digest()
@@ -144,7 +144,7 @@ def verify_detached(message, signature):
         public_key,
         salt,
         detached_message_sig,
-        *_,
+        *_,  # ignore additional elements
     ] = header
 
     message_digest = hashlib.sha512(salt + message).digest()
