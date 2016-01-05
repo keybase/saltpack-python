@@ -103,7 +103,7 @@ def verify_attached(message):
     input = io.BytesIO(message)
     output = io.BytesIO()
     header = umsgpack.unpack(input)
-    debug(json_repr(header))
+    debug("header packet:", json_repr(header))
     [
         name,
         [major, minor],
@@ -116,10 +116,12 @@ def verify_attached(message):
     packetnum = 0
     while True:
         payload_packet = umsgpack.unpack(input)
-        debug(json_repr(payload_packet))
+        debug("payload packet:", json_repr(payload_packet))
         [detached_payload_sig, chunk] = payload_packet
         packetnum_64 = packetnum.to_bytes(8, 'big')
+        debug("packet number:", packetnum_64)
         payload_digest = hashlib.sha512(salt + packetnum_64 + chunk).digest()
+        debug("digest:", payload_digest)
         payload_sig_text = b"SaltBox\0attached signature\0" + payload_digest
         payload_sig = detached_payload_sig + payload_sig_text
         libnacl.crypto_sign_open(payload_sig, public_key)
@@ -129,13 +131,12 @@ def verify_attached(message):
         packetnum += 1
 
     verified_message = output.getvalue()
-    debug(verified_message)
     return verified_message
 
 
 def verify_detached(message, signature):
     header = umsgpack.unpackb(signature)
-    debug(json_repr(header))
+    debug("header packet:", json_repr(header))
     [
         name,
         [major, minor],
@@ -147,11 +148,10 @@ def verify_detached(message, signature):
     ] = header
 
     message_digest = hashlib.sha512(salt + message).digest()
+    debug("digest:", message_digest)
     message_sig_text = b"SaltBox\0detached signature\0" + message_digest
     message_sig = detached_message_sig + message_sig_text
     libnacl.crypto_sign_open(message_sig, public_key)
-
-    debug(message)
     return message
 
 
@@ -190,7 +190,7 @@ def do_verify(args):
     if detached:
         with open(detached, 'rb') as f:
             signature = f.read()
-        if ['--message']:
+        if args['--message']:
             message = args['--message'].encode()
         else:
             message = sys.stdin.buffer.read()
