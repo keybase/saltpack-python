@@ -104,11 +104,13 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         b"encryption nonce prefix\0" +
         ephemeral_public)
     nonce_prefix = libnacl.crypto_hash(nonce_prefix_preimage)[:16]
-    message_key = os.urandom(32)
-
-    keys = [sender_public, message_key]
-    keys_bytes = umsgpack.packb(keys)
     header_nonce = nonce_prefix + counter(0)
+    payload_key = os.urandom(32)
+
+    sender_public_secretbox = libnacl.crypto_secretbox(
+        msg=sender_public,
+        nonce=header_nonce,
+        key=payload_key)
 
     recipient_pairs = []
     recipient_beforenms = {}
@@ -116,13 +118,13 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         # The recipient box holds the sender's long-term public key and the
         # symmetric message encryption key. It's encrypted for each recipient
         # with the ephemeral private key.
-        recipient_box = libnacl.crypto_box(
-            msg=keys_bytes,
+        payload_key_secretbox = libnacl.crypto_box(
+            msg=payload_key,
             nonce=header_nonce,
             pk=recipient_public,
             sk=ephemeral_private)
         # None is for the recipient public key, which is optional.
-        pair = [None, recipient_box]
+        pair = [None, payload_key_secretbox]
         recipient_pairs.append(pair)
 
         # Precompute the shared secret to speed up payload packet encryption.
@@ -136,6 +138,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         [1, 0],     # major and minor version
         0,          # mode (encryption, as opposed to signing/detached)
         ephemeral_public,
+        sender_public_secretbox,
         recipient_pairs,
     ]
     output = io.BytesIO()
@@ -147,7 +150,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         payload_secretbox = libnacl.crypto_secretbox(
             msg=chunk,
             nonce=payload_nonce,
-            key=message_key)
+            key=payload_key)
         # Authenticate the hash of the payload for each recipient.
         payload_hash = libnacl.crypto_hash(payload_secretbox)
         hash_authenticators = []
@@ -177,6 +180,7 @@ def decrypt(input, recipient_private):
         [major_version, minor_version],
         mode,
         ephemeral_public,
+        sender_public_secretbox,
         recipient_pairs,
         *_,  # ignore additional elements
     ] = header
@@ -194,10 +198,10 @@ def decrypt(input, recipient_private):
 
     # Try decrypting each sender box, until we find the one that works.
     for recipient_index, pair in enumerate(recipient_pairs):
-        [_, recipient_box, *_] = pair
+        [_, payload_key_secretbox, *_] = pair
         try:
-            keys_bytes = libnacl.crypto_box_open_afternm(
-                ctxt=recipient_box,
+            payload_key = libnacl.crypto_box_open_afternm(
+                ctxt=payload_key_secretbox,
                 nonce=header_nonce,
                 k=ephemeral_beforenm)
             break
@@ -206,9 +210,10 @@ def decrypt(input, recipient_private):
     else:
         raise RuntimeError('Failed to find matching recipient.')
 
-    # Unpack the sender key and the message encryption key.
-    keys = umsgpack.unpackb(keys_bytes)
-    sender_public, message_key = keys
+    sender_public = libnacl.crypto_secretbox_open(
+        ctxt=sender_public_secretbox,
+        nonce=header_nonce,
+        key=payload_key)
 
     # Precompute the shared secret to speed up payload decryption.
     sender_beforenm = libnacl.crypto_box_beforenm(
@@ -217,7 +222,7 @@ def decrypt(input, recipient_private):
 
     debug('recipient index:', recipient_index)
     debug('sender key:', sender_public)
-    debug('message key:', message_key)
+    debug('message key:', payload_key)
 
     # Decrypt each of the packets.
     output = io.BytesIO()
@@ -249,7 +254,7 @@ def decrypt(input, recipient_private):
         chunk = libnacl.crypto_secretbox_open(
             ctxt=payload_secretbox,
             nonce=payload_nonce,
-            key=message_key)
+            key=payload_key)
         output.write(chunk)
 
         debug('chunk:', repr(chunk))
