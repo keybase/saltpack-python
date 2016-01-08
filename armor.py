@@ -242,7 +242,7 @@ def armor(input_bytes, *, alphabet=b62alphabet, block_size=32, raw=False,
     for chunk in chunks:
         output += encode_block(chunk, alphabet, shift=shift)
     if raw:
-        return output
+        return ' '.join(chunk_iterable(output, 43))
     words = chunk_iterable(output, 15)
     sentences = chunk_iterable(words, 200)
     joined = '\n'.join(' '.join(sentence) for sentence in sentences)
