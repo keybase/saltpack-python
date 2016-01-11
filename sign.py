@@ -24,7 +24,7 @@ Usage:
 If no private key is given, the default is random.
 
 Options:
-    -a --armor             encode/decode with SaltPack armor
+    -a --armor             encode/decode with saltpack armor
     -c --chunk=<size>      size of payload chunks, default 1 MB
     -d --detached          make a detached signature
     -m --message=<msg>     message text, instead of reading stdin
@@ -54,7 +54,7 @@ def sign_attached(message, private_key, chunk_size):
     public_key = private_key[32:]
     nonce = os.urandom(16)
     header = [
-        "SaltPack",
+        "saltpack",
         [1, 0],
         1,
         public_key,
@@ -67,7 +67,7 @@ def sign_attached(message, private_key, chunk_size):
     for chunk in chunks_with_empty(message, chunk_size):
         packetnum_64 = packetnum.to_bytes(8, 'big')
         payload_digest = hashlib.sha512(nonce + packetnum_64 + chunk).digest()
-        payload_sig_text = b"SaltPack\0attached signature\0" + payload_digest
+        payload_sig_text = b"saltpack\0attached signature\0" + payload_digest
         payload_sig = libnacl.crypto_sign(payload_sig_text, private_key)
         detached_payload_sig = payload_sig[:64]
         packet = [
@@ -84,12 +84,12 @@ def sign_detached(message, private_key):
     public_key = private_key[32:]
     nonce = os.urandom(16)
     message_digest = hashlib.sha512(nonce + message).digest()
-    message_sig_text = b"SaltPack\0detached signature\0" + message_digest
+    message_sig_text = b"saltpack\0detached signature\0" + message_digest
     message_sig = libnacl.crypto_sign(message_sig_text, private_key)
     detached_message_sig = message_sig[:64]
 
     header = [
-        "SaltPack",
+        "saltpack",
         [1, 0],
         2,
         public_key,
@@ -122,7 +122,7 @@ def verify_attached(message):
         debug("packet number:", packetnum_64)
         payload_digest = hashlib.sha512(nonce + packetnum_64 + chunk).digest()
         debug("digest:", payload_digest)
-        payload_sig_text = b"SaltPack\0attached signature\0" + payload_digest
+        payload_sig_text = b"saltpack\0attached signature\0" + payload_digest
         payload_sig = detached_payload_sig + payload_sig_text
         libnacl.crypto_sign_open(payload_sig, public_key)
         if chunk == b"":
@@ -149,7 +149,7 @@ def verify_detached(message, signature):
 
     message_digest = hashlib.sha512(nonce + message).digest()
     debug("digest:", message_digest)
-    message_sig_text = b"SaltPack\0detached signature\0" + message_digest
+    message_sig_text = b"saltpack\0detached signature\0" + message_digest
     message_sig = detached_message_sig + message_sig_text
     libnacl.crypto_sign_open(message_sig, public_key)
     return message
