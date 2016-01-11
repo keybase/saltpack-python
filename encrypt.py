@@ -21,7 +21,7 @@ If no private key is given, the default is 32 zero bytes. If no recipients are
 given, the default is the sender's own public key.
 
 Options:
-    -a --armor          encode/decode with SaltPack armor
+    -a --armor          encode/decode with saltpack armor
     -c --chunk=<size>   size of payload chunks, default 1 MB
     -m --message=<msg>  message text, instead of reading stdin
     --debug             debug mode
@@ -73,8 +73,8 @@ def json_repr(obj):
 
 
 def counter(i):
-    'Turn the number into a 64-bit big-endian unsigned representation.'
-    return i.to_bytes(8, 'big')
+    'Turn the number into a 24-byte nonce.'
+    return b'\0'*16 + i.to_bytes(8, 'big')
 
 
 def tohex(b):
@@ -100,67 +100,67 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
     ephemeral_private = os.urandom(32)
     ephemeral_public = libnacl.crypto_scalarmult_base(ephemeral_private)
     nonce_prefix_preimage = (
-        b"SaltPack\0" +
+        b"saltpack\0" +
         b"encryption nonce prefix\0" +
         ephemeral_public)
-    nonce_prefix = libnacl.crypto_hash(nonce_prefix_preimage)[:16]
-    header_nonce = nonce_prefix + counter(0)
+    public_key_nonce_prefix = libnacl.crypto_hash(nonce_prefix_preimage)[:23]
     payload_key = os.urandom(32)
 
-    sender_public_secretbox = libnacl.crypto_secretbox(
+    sender_secretbox = libnacl.crypto_secretbox(
         msg=sender_public,
-        nonce=header_nonce,
+        nonce=counter(0),
         key=payload_key)
 
     recipient_pairs = []
-    recipient_beforenms = {}
+    recipient_mac_keys = []
     for recipient_public in recipient_public_keys:
         # The recipient box holds the sender's long-term public key and the
         # symmetric message encryption key. It's encrypted for each recipient
         # with the ephemeral private key.
-        payload_key_secretbox = libnacl.crypto_box(
+        payload_key_box = libnacl.crypto_box(
             msg=payload_key,
-            nonce=header_nonce,
+            nonce=public_key_nonce_prefix + b'\0',
             pk=recipient_public,
             sk=ephemeral_private)
         # None is for the recipient public key, which is optional.
-        pair = [None, payload_key_secretbox]
+        pair = [None, payload_key_box]
         recipient_pairs.append(pair)
 
-        # Precompute the shared secret to speed up payload packet encryption.
-        beforenm = libnacl.crypto_box_beforenm(
+        # Compute the per-user MAC key.
+        mac_key_box = libnacl.crypto_box(
+            msg=b'\0'*32,
+            nonce=public_key_nonce_prefix + b'\1',
             pk=recipient_public,
             sk=sender_private)
-        recipient_beforenms[recipient_public] = beforenm
+        mac_key = mac_key_box[16:48]
+        recipient_mac_keys.append(mac_key)
 
     header = [
         "SaltBox",  # format name
         [1, 0],     # major and minor version
         0,          # mode (encryption, as opposed to signing/detached)
         ephemeral_public,
-        sender_public_secretbox,
+        sender_secretbox,
         recipient_pairs,
     ]
+    header_bytes = umsgpack.packb(header)
+    header_hash = libnacl.crypto_hash(header_bytes)
     output = io.BytesIO()
-    output.write(umsgpack.packb(header))
+    output.write(header_bytes)
 
     # Write the chunks.
     for chunknum, chunk in enumerate(chunks_with_empty(message, chunk_size)):
-        payload_nonce = nonce_prefix + counter(chunknum + 1)
         payload_secretbox = libnacl.crypto_secretbox(
             msg=chunk,
-            nonce=payload_nonce,
+            nonce=counter(chunknum+1),
             key=payload_key)
         # Authenticate the hash of the payload for each recipient.
-        payload_hash = libnacl.crypto_hash(payload_secretbox)
+        payload_hash = libnacl.crypto_hash(
+            header_hash + counter(chunknum+1) + payload_secretbox)
         hash_authenticators = []
-        for recipient_public in recipient_public_keys:
-            beforenm = recipient_beforenms[recipient_public]
-            hash_box = libnacl.crypto_box_afternm(
-                msg=payload_hash,
-                nonce=payload_nonce,
-                k=beforenm)
-            hash_authenticators.append(hash_box[:16])
+        for mac_key in recipient_mac_keys:
+            authenticator = libnacl.crypto_auth(payload_hash, mac_key)
+            hash_authenticators.append(authenticator)
         packet = [
             hash_authenticators,
             payload_secretbox,
@@ -174,35 +174,36 @@ def decrypt(input, recipient_private):
     stream = io.BytesIO(input)
     # Parse the header.
     header = umsgpack.unpack(stream)
+    header_hash = libnacl.crypto_hash(umsgpack.packb(header))
     debug('header:', json_repr(header))
     [
         format_name,
         [major_version, minor_version],
         mode,
         ephemeral_public,
-        sender_public_secretbox,
+        sender_secretbox,
         recipient_pairs,
         *_,  # ignore additional elements
     ] = header
     nonce_prefix_preimage = (
-        b"SaltPack\0" +
+        b"saltpack\0" +
         b"encryption nonce prefix\0" +
         ephemeral_public)
-    nonce_prefix = libnacl.crypto_hash(nonce_prefix_preimage)[:16]
+    public_key_nonce_prefix = libnacl.crypto_hash(nonce_prefix_preimage)[:23]
     ephemeral_beforenm = libnacl.crypto_box_beforenm(
         pk=ephemeral_public,
         sk=recipient_private)
-    header_nonce = nonce_prefix + counter(0)
-    debug('nonce prefix', nonce_prefix)
-    debug('header nonce:', header_nonce)
+    payload_key_box_nonce = public_key_nonce_prefix + b'\0'
+    debug('nonce prefix', public_key_nonce_prefix)
+    debug('payload key nonce:', payload_key_box_nonce)
 
     # Try decrypting each sender box, until we find the one that works.
     for recipient_index, pair in enumerate(recipient_pairs):
-        [_, payload_key_secretbox, *_] = pair
+        [_, payload_key_box, *_] = pair
         try:
             payload_key = libnacl.crypto_box_open_afternm(
-                ctxt=payload_key_secretbox,
-                nonce=header_nonce,
+                ctxt=payload_key_box,
+                nonce=payload_key_box_nonce,
                 k=ephemeral_beforenm)
             break
         except ValueError:
@@ -211,49 +212,44 @@ def decrypt(input, recipient_private):
         raise RuntimeError('Failed to find matching recipient.')
 
     sender_public = libnacl.crypto_secretbox_open(
-        ctxt=sender_public_secretbox,
-        nonce=header_nonce,
+        ctxt=sender_secretbox,
+        nonce=counter(0),
         key=payload_key)
 
-    # Precompute the shared secret to speed up payload decryption.
-    sender_beforenm = libnacl.crypto_box_beforenm(
+    mac_key_box = libnacl.crypto_box(
+        msg=b'\0'*32,
+        nonce=public_key_nonce_prefix + b'\1',
         pk=sender_public,
         sk=recipient_private)
+    mac_key = mac_key_box[16:48]
 
     debug('recipient index:', recipient_index)
     debug('sender key:', sender_public)
-    debug('message key:', payload_key)
+    debug('payload key:', payload_key)
+    debug('mac key:', mac_key)
 
     # Decrypt each of the packets.
     output = io.BytesIO()
     packetnum = 1
     while True:
-        payload_nonce = nonce_prefix + counter(packetnum)
         packet = umsgpack.unpack(stream)
         debug('packet:', json_repr(packet))
         [hash_authenticators, payload_secretbox, *_] = packet
         hash_authenticator = hash_authenticators[recipient_index]
 
         # Verify the secretbox hash.
-        payload_hash = libnacl.crypto_hash(payload_secretbox)
-        hash_box = libnacl.crypto_box_afternm(
-            msg=payload_hash,
-            nonce=payload_nonce,
-            k=sender_beforenm)
-        our_authenticator = hash_box[:16]
-
-        debug('payload nonce:', payload_nonce)
+        payload_hash = libnacl.crypto_hash(
+            header_hash + counter(packetnum) + payload_secretbox)
         debug('payload hash', payload_hash)
-        debug('hash authenticator:', our_authenticator)
-
-        verified = libnacl.crypto_verify_16(
-            our_authenticator, hash_authenticator)
-        assert verified, "The payload hash authenticator doesn't match."
+        libnacl.crypto_auth_verify(
+            tok=hash_authenticator,
+            msg=payload_hash,
+            key=mac_key)
 
         # Open the payload secretbox.
         chunk = libnacl.crypto_secretbox_open(
             ctxt=payload_secretbox,
-            nonce=payload_nonce,
+            nonce=counter(packetnum),
             key=payload_key)
         output.write(chunk)
 
