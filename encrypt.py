@@ -72,11 +72,6 @@ def json_repr(obj):
     return json.dumps(_recurse_repr(obj), indent='  ')
 
 
-def counter(i):
-    'Turn the number into a 24-byte nonce.'
-    return b'\0'*16 + i.to_bytes(8, 'big')
-
-
 def tohex(b):
     return binascii.hexlify(b).decode()
 
@@ -92,6 +87,18 @@ def debug(*args):
         print(*args, file=sys.stderr)
 
 
+def secretbox_nonce(packetnum):
+    'Turn the packet number into a 24-byte nonce.'
+    return b'\0'*16 + packetnum.to_bytes(8, 'big')
+
+
+def box_nonce(ephemeral_public, extra_byte):
+    '''Hash the ephemeral key, take the first 23 bytes, and append the extra
+    byte.'''
+    preimage = b"saltpack\0encryption nonce prefix\0" + ephemeral_public
+    return libnacl.crypto_hash(preimage)[:23] + extra_byte
+
+
 # All the important bits!
 # -----------------------
 
@@ -99,16 +106,11 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
     sender_public = libnacl.crypto_scalarmult_base(sender_private)
     ephemeral_private = os.urandom(32)
     ephemeral_public = libnacl.crypto_scalarmult_base(ephemeral_private)
-    nonce_prefix_preimage = (
-        b"saltpack\0" +
-        b"encryption nonce prefix\0" +
-        ephemeral_public)
-    public_key_nonce_prefix = libnacl.crypto_hash(nonce_prefix_preimage)[:23]
     payload_key = os.urandom(32)
 
     sender_secretbox = libnacl.crypto_secretbox(
         msg=sender_public,
-        nonce=counter(0),
+        nonce=secretbox_nonce(0),
         key=payload_key)
 
     recipient_pairs = []
@@ -119,7 +121,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         # with the ephemeral private key.
         payload_key_box = libnacl.crypto_box(
             msg=payload_key,
-            nonce=public_key_nonce_prefix + b'\0',
+            nonce=box_nonce(ephemeral_public, b'\0'),
             pk=recipient_public,
             sk=ephemeral_private)
         # None is for the recipient public key, which is optional.
@@ -129,7 +131,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         # Compute the per-user MAC key.
         mac_key_box = libnacl.crypto_box(
             msg=b'\0'*32,
-            nonce=public_key_nonce_prefix + b'\1',
+            nonce=box_nonce(ephemeral_public, b'\1'),
             pk=recipient_public,
             sk=sender_private)
         mac_key = mac_key_box[16:48]
@@ -152,13 +154,14 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
 
     # Write the chunks.
     for chunknum, chunk in enumerate(chunks_with_empty(message, chunk_size)):
+        payload_nonce = secretbox_nonce(chunknum+1)
         payload_secretbox = libnacl.crypto_secretbox(
             msg=chunk,
-            nonce=counter(chunknum+1),
+            nonce=payload_nonce,
             key=payload_key)
         # Authenticate the hash of the payload for each recipient.
         payload_hash = libnacl.crypto_hash(
-            header_hash + counter(chunknum+1) + payload_secretbox)
+            header_hash + payload_nonce + payload_secretbox)
         hash_authenticators = []
         for mac_key in recipient_mac_keys:
             authenticator = libnacl.crypto_auth(payload_hash, mac_key)
@@ -190,16 +193,10 @@ def decrypt(input, recipient_private):
         recipient_pairs,
         *_,  # ignore additional elements
     ] = header
-    nonce_prefix_preimage = (
-        b"saltpack\0" +
-        b"encryption nonce prefix\0" +
-        ephemeral_public)
-    public_key_nonce_prefix = libnacl.crypto_hash(nonce_prefix_preimage)[:23]
     ephemeral_beforenm = libnacl.crypto_box_beforenm(
         pk=ephemeral_public,
         sk=recipient_private)
-    payload_key_box_nonce = public_key_nonce_prefix + b'\0'
-    debug('nonce prefix', public_key_nonce_prefix)
+    payload_key_box_nonce = box_nonce(ephemeral_public, b'\0')
     debug('payload key nonce:', payload_key_box_nonce)
 
     # Try decrypting each sender box, until we find the one that works.
@@ -218,12 +215,13 @@ def decrypt(input, recipient_private):
 
     sender_public = libnacl.crypto_secretbox_open(
         ctxt=sender_secretbox,
-        nonce=counter(0),
+        nonce=secretbox_nonce(0),
         key=payload_key)
 
+    mac_key_nonce = box_nonce(ephemeral_public, b'\1')
     mac_key_box = libnacl.crypto_box(
         msg=b'\0'*32,
-        nonce=public_key_nonce_prefix + b'\1',
+        nonce=mac_key_nonce,
         pk=sender_public,
         sk=recipient_private)
     mac_key = mac_key_box[16:48]
@@ -231,6 +229,7 @@ def decrypt(input, recipient_private):
     debug('recipient index:', recipient_index)
     debug('sender key:', sender_public)
     debug('payload key:', payload_key)
+    debug('mac key nonce:', mac_key_nonce)
     debug('mac key:', mac_key)
 
     # Decrypt each of the packets.
@@ -243,8 +242,9 @@ def decrypt(input, recipient_private):
         hash_authenticator = hash_authenticators[recipient_index]
 
         # Verify the secretbox hash.
+        payload_nonce = secretbox_nonce(packetnum)
         payload_hash = libnacl.crypto_hash(
-            header_hash + counter(packetnum) + payload_secretbox)
+            header_hash + payload_nonce + payload_secretbox)
         debug('payload hash', payload_hash)
         libnacl.crypto_auth_verify(
             tok=hash_authenticator,
@@ -254,7 +254,7 @@ def decrypt(input, recipient_private):
         # Open the payload secretbox.
         chunk = libnacl.crypto_secretbox_open(
             ctxt=payload_secretbox,
-            nonce=counter(packetnum),
+            nonce=payload_nonce,
             key=payload_key)
         output.write(chunk)
 
