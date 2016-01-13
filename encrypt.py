@@ -87,18 +87,6 @@ def debug(*args):
         print(*args, file=sys.stderr)
 
 
-def secretbox_nonce(packetnum):
-    'Turn the packet number into a 24-byte nonce.'
-    return b'\0'*16 + packetnum.to_bytes(8, 'big')
-
-
-def box_nonce(ephemeral_public, extra_byte):
-    '''Hash the ephemeral key, take the first 23 bytes, and append the extra
-    byte.'''
-    preimage = b"saltpack\0encryption nonce prefix\0" + ephemeral_public
-    return libnacl.crypto_hash(preimage)[:23] + extra_byte
-
-
 # All the important bits!
 # -----------------------
 
@@ -110,32 +98,22 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
 
     sender_secretbox = libnacl.crypto_secretbox(
         msg=sender_public,
-        nonce=secretbox_nonce(0),
+        nonce=b"saltpack_sender_key\0\0\0\0\0",
         key=payload_key)
 
     recipient_pairs = []
-    recipient_mac_keys = []
     for recipient_public in recipient_public_keys:
         # The recipient box holds the sender's long-term public key and the
         # symmetric message encryption key. It's encrypted for each recipient
         # with the ephemeral private key.
         payload_key_box = libnacl.crypto_box(
             msg=payload_key,
-            nonce=box_nonce(ephemeral_public, b'\0'),
+            nonce=b"saltpack_payload_key\0\0\0\0",
             pk=recipient_public,
             sk=ephemeral_private)
         # None is for the recipient public key, which is optional.
         pair = [None, payload_key_box]
         recipient_pairs.append(pair)
-
-        # Compute the per-user MAC key.
-        mac_key_box = libnacl.crypto_box(
-            msg=b'\0'*32,
-            nonce=box_nonce(ephemeral_public, b'\1'),
-            pk=recipient_public,
-            sk=sender_private)
-        mac_key = mac_key_box[16:48]
-        recipient_mac_keys.append(mac_key)
 
     header = [
         "SaltBox",  # format name
@@ -152,9 +130,21 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
     output.write(header_len)
     output.write(header_bytes)
 
+    # Compute the per-user MAC keys.
+    recipient_mac_keys = []
+    mac_keys_nonce = header_hash[:24]
+    for recipient_public in recipient_public_keys:
+        mac_key_box = libnacl.crypto_box(
+            msg=b'\0'*32,
+            nonce=mac_keys_nonce,
+            pk=recipient_public,
+            sk=sender_private)
+        mac_key = mac_key_box[16:48]
+        recipient_mac_keys.append(mac_key)
+
     # Write the chunks.
     for chunknum, chunk in enumerate(chunks_with_empty(message, chunk_size)):
-        payload_nonce = secretbox_nonce(chunknum+1)
+        payload_nonce = b"saltpack_payload" + chunknum.to_bytes(8, "big")
         payload_secretbox = libnacl.crypto_secretbox(
             msg=chunk,
             nonce=payload_nonce,
@@ -196,8 +186,6 @@ def decrypt(input, recipient_private):
     ephemeral_beforenm = libnacl.crypto_box_beforenm(
         pk=ephemeral_public,
         sk=recipient_private)
-    payload_key_box_nonce = box_nonce(ephemeral_public, b'\0')
-    debug('payload key nonce:', payload_key_box_nonce)
 
     # Try decrypting each sender box, until we find the one that works.
     for recipient_index, pair in enumerate(recipient_pairs):
@@ -205,7 +193,7 @@ def decrypt(input, recipient_private):
         try:
             payload_key = libnacl.crypto_box_open_afternm(
                 ctxt=payload_key_box,
-                nonce=payload_key_box_nonce,
+                nonce=b"saltpack_payload_key\0\0\0\0",
                 k=ephemeral_beforenm)
             break
         except ValueError:
@@ -215,10 +203,10 @@ def decrypt(input, recipient_private):
 
     sender_public = libnacl.crypto_secretbox_open(
         ctxt=sender_secretbox,
-        nonce=secretbox_nonce(0),
+        nonce=b"saltpack_sender_key\0\0\0\0\0",
         key=payload_key)
 
-    mac_key_nonce = box_nonce(ephemeral_public, b'\1')
+    mac_key_nonce = header_hash[:24]
     mac_key_box = libnacl.crypto_box(
         msg=b'\0'*32,
         nonce=mac_key_nonce,
@@ -234,7 +222,7 @@ def decrypt(input, recipient_private):
 
     # Decrypt each of the packets.
     output = io.BytesIO()
-    packetnum = 1
+    chunknum = 0
     while True:
         packet = umsgpack.unpack(stream)
         debug('packet:', json_repr(packet))
@@ -242,7 +230,7 @@ def decrypt(input, recipient_private):
         hash_authenticator = hash_authenticators[recipient_index]
 
         # Verify the secretbox hash.
-        payload_nonce = secretbox_nonce(packetnum)
+        payload_nonce = b"saltpack_payload" + chunknum.to_bytes(8, "big")
         payload_hash = libnacl.crypto_hash(
             header_hash + payload_nonce + payload_secretbox)
         debug('payload hash', payload_hash)
@@ -264,7 +252,7 @@ def decrypt(input, recipient_private):
         if chunk == b'':
             break
 
-        packetnum += 1
+        chunknum += 1
 
     return output.getvalue()
 
