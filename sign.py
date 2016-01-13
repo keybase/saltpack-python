@@ -206,6 +206,7 @@ def do_verify(args):
     # Verify the message.
     if detached_mode:
         verify_detached(message, signature)
+        print("Verified!", file=sys.stderr)
     else:
         output = verify_attached(signature)
         sys.stdout.buffer.write(output)
