@@ -90,6 +90,16 @@ def debug(*args):
 # All the important bits!
 # -----------------------
 
+SENDER_KEY_SECRETBOX_NONCE = b"saltpack_sender_secbox\0\0"
+assert len(SENDER_KEY_SECRETBOX_NONCE) == 24
+
+PAYLOAD_KEY_BOX_NONCE = b"saltpack_payload_key_box"
+assert len(PAYLOAD_KEY_BOX_NONCE) == 24
+
+PAYLOAD_NONCE_PREFIX = b"saltpack_ploadsb"
+assert len(PAYLOAD_NONCE_PREFIX) == 16
+
+
 def encrypt(sender_private, recipient_public_keys, message, chunk_size):
     sender_public = libnacl.crypto_scalarmult_base(sender_private)
     ephemeral_private = os.urandom(32)
@@ -98,7 +108,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
 
     sender_secretbox = libnacl.crypto_secretbox(
         msg=sender_public,
-        nonce=b"saltpack_sender_key\0\0\0\0\0",
+        nonce=SENDER_KEY_SECRETBOX_NONCE,
         key=payload_key)
 
     recipient_pairs = []
@@ -108,7 +118,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         # with the ephemeral private key.
         payload_key_box = libnacl.crypto_box(
             msg=payload_key,
-            nonce=b"saltpack_payload_key\0\0\0\0",
+            nonce=PAYLOAD_KEY_BOX_NONCE,
             pk=recipient_public,
             sk=ephemeral_private)
         # None is for the recipient public key, which is optional.
@@ -144,7 +154,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
 
     # Write the chunks.
     for chunknum, chunk in enumerate(chunks_with_empty(message, chunk_size)):
-        payload_nonce = b"saltpack_payload" + chunknum.to_bytes(8, "big")
+        payload_nonce = PAYLOAD_NONCE_PREFIX + chunknum.to_bytes(8, "big")
         payload_secretbox = libnacl.crypto_secretbox(
             msg=chunk,
             nonce=payload_nonce,
@@ -194,7 +204,7 @@ def decrypt(input, recipient_private):
         try:
             payload_key = libnacl.crypto_box_open_afternm(
                 ctxt=payload_key_box,
-                nonce=b"saltpack_payload_key\0\0\0\0",
+                nonce=PAYLOAD_KEY_BOX_NONCE,
                 k=ephemeral_beforenm)
             break
         except ValueError:
@@ -204,7 +214,7 @@ def decrypt(input, recipient_private):
 
     sender_public = libnacl.crypto_secretbox_open(
         ctxt=sender_secretbox,
-        nonce=b"saltpack_sender_key\0\0\0\0\0",
+        nonce=SENDER_KEY_SECRETBOX_NONCE,
         key=payload_key)
 
     mac_key_nonce = header_hash[:24]
@@ -231,7 +241,7 @@ def decrypt(input, recipient_private):
         hash_authenticator = hash_authenticators[recipient_index]
 
         # Verify the secretbox hash.
-        payload_nonce = b"saltpack_payload" + chunknum.to_bytes(8, "big")
+        payload_nonce = PAYLOAD_NONCE_PREFIX + chunknum.to_bytes(8, "big")
         debug('payload nonce:', payload_nonce)
         payload_hash = libnacl.crypto_hash(
             header_hash + payload_nonce + payload_secretbox)
