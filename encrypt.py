@@ -174,6 +174,7 @@ def decrypt(input, recipient_private):
     header_hash = libnacl.crypto_hash(header_bytes)
     header = umsgpack.unpackb(header_bytes)
     debug('header:', json_repr(header))
+    debug('header hash:', header_hash)
     [
         format_name,
         [major_version, minor_version],
@@ -231,9 +232,10 @@ def decrypt(input, recipient_private):
 
         # Verify the secretbox hash.
         payload_nonce = b"saltpack_payload" + chunknum.to_bytes(8, "big")
+        debug('payload nonce:', payload_nonce)
         payload_hash = libnacl.crypto_hash(
             header_hash + payload_nonce + payload_secretbox)
-        debug('payload hash', payload_hash)
+        debug('hash to authenticate:', payload_hash)
         libnacl.crypto_auth_verify(
             tok=hash_authenticator,
             msg=payload_hash,
