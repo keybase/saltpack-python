@@ -134,11 +134,10 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         recipient_pairs,
     ]
     header_bytes = umsgpack.packb(header)
-    header_len = umsgpack.packb(len(header_bytes))
     header_hash = libnacl.crypto_hash(header_bytes)
+    double_encoded_header_bytes = umsgpack.packb(header_bytes)
     output = io.BytesIO()
-    output.write(header_len)
-    output.write(header_bytes)
+    output.write(double_encoded_header_bytes)
 
     # Compute the per-user MAC keys.
     recipient_mac_keys = []
@@ -178,9 +177,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
 def decrypt(input, recipient_private):
     stream = io.BytesIO(input)
     # Parse the header.
-    header_len = umsgpack.unpack(stream)
-    debug('header len:', header_len)
-    header_bytes = stream.read(header_len)
+    header_bytes = umsgpack.unpack(stream)
     header_hash = libnacl.crypto_hash(header_bytes)
     header = umsgpack.unpackb(header_bytes)
     debug('header:', json_repr(header))
