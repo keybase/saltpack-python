@@ -90,7 +90,7 @@ def debug(*args):
 # All the important bits!
 # -----------------------
 
-SENDER_KEY_SECRETBOX_NONCE = b"saltpack_sender_secbox\0\0"
+SENDER_KEY_SECRETBOX_NONCE = b"saltpack_sender_key_sbox"
 assert len(SENDER_KEY_SECRETBOX_NONCE) == 24
 
 PAYLOAD_KEY_BOX_NONCE = b"saltpack_payload_key_box"
