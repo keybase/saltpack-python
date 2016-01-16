@@ -149,6 +149,7 @@ def verify_detached(message, signature):
     public_key, header_hash = read_header(input)
 
     detached_message_sig = umsgpack.unpack(input)
+    debug("sig:", detached_message_sig)
     message_digest = hashlib.sha512(header_hash + message).digest()
     debug("digest:", message_digest)
     message_sig_text = b"saltpack\0detached signature\0" + message_digest
