@@ -50,23 +50,48 @@ def debug(*args):
         print(*args, file=sys.stderr)
 
 
-def sign_attached(message, private_key, chunk_size):
-    public_key = private_key[32:]
-    nonce = os.urandom(16)
+def write_header(public_key, mode, output):
+    nonce = os.urandom(32)
     header = [
         "saltpack",
         [1, 0],
-        1,
+        mode,
         public_key,
         nonce,
-        ]
+    ]
+    header_bytes = umsgpack.packb(header)
+    header_hash = hashlib.sha512(header_bytes).digest()
+    umsgpack.pack(header_bytes, output)
+    return header_hash
+
+
+def read_header(stream):
+    header_bytes = umsgpack.unpack(stream)
+    header_hash = hashlib.sha512(header_bytes).digest()
+    header = umsgpack.unpackb(header_bytes)
+    debug("header packet:", json_repr(header))
+    debug("header hash:", json_repr(header_hash))
+    [
+        name,
+        [major, minor],
+        mode,
+        public_key,
+        nonce,
+        *_,  # ignore additional elements
+    ] = header
+    return public_key, header_hash
+
+
+def sign_attached(message, private_key, chunk_size):
     output = io.BytesIO()
-    umsgpack.pack(header, output)
+    public_key = private_key[32:]
+    header_hash = write_header(public_key, 1, output)
 
     packetnum = 0
     for chunk in chunks_with_empty(message, chunk_size):
         packetnum_64 = packetnum.to_bytes(8, 'big')
-        payload_digest = hashlib.sha512(nonce + packetnum_64 + chunk).digest()
+        payload_digest = hashlib.sha512(
+            header_hash + packetnum_64 + chunk).digest()
         payload_sig_text = b"saltpack\0attached signature\0" + payload_digest
         payload_sig = libnacl.crypto_sign(payload_sig_text, private_key)
         detached_payload_sig = payload_sig[:64]
@@ -81,37 +106,21 @@ def sign_attached(message, private_key, chunk_size):
 
 
 def sign_detached(message, private_key):
+    output = io.BytesIO()
     public_key = private_key[32:]
-    nonce = os.urandom(16)
-    message_digest = hashlib.sha512(nonce + message).digest()
+    header_hash = write_header(public_key, 2, output)
+    message_digest = hashlib.sha512(header_hash + message).digest()
     message_sig_text = b"saltpack\0detached signature\0" + message_digest
     message_sig = libnacl.crypto_sign(message_sig_text, private_key)
     detached_message_sig = message_sig[:64]
-
-    header = [
-        "saltpack",
-        [1, 0],
-        2,
-        public_key,
-        nonce,
-        detached_message_sig,
-        ]
-    return umsgpack.packb(header)
+    umsgpack.pack(detached_message_sig, output)
+    return output.getvalue()
 
 
 def verify_attached(message):
     input = io.BytesIO(message)
     output = io.BytesIO()
-    header = umsgpack.unpack(input)
-    debug("header packet:", json_repr(header))
-    [
-        name,
-        [major, minor],
-        mode,
-        public_key,
-        nonce,
-        *_,  # ignore additional elements
-    ] = header
+    public_key, header_hash = read_header(input)
 
     packetnum = 0
     while True:
@@ -120,7 +129,8 @@ def verify_attached(message):
         [detached_payload_sig, chunk, *_] = payload_packet
         packetnum_64 = packetnum.to_bytes(8, 'big')
         debug("packet number:", packetnum_64)
-        payload_digest = hashlib.sha512(nonce + packetnum_64 + chunk).digest()
+        payload_digest = hashlib.sha512(
+            header_hash + packetnum_64 + chunk).digest()
         debug("digest:", payload_digest)
         payload_sig_text = b"saltpack\0attached signature\0" + payload_digest
         payload_sig = detached_payload_sig + payload_sig_text
@@ -135,19 +145,11 @@ def verify_attached(message):
 
 
 def verify_detached(message, signature):
-    header = umsgpack.unpackb(signature)
-    debug("header packet:", json_repr(header))
-    [
-        name,
-        [major, minor],
-        mode,
-        public_key,
-        nonce,
-        detached_message_sig,
-        *_,  # ignore additional elements
-    ] = header
+    input = io.BytesIO(signature)
+    public_key, header_hash = read_header(input)
 
-    message_digest = hashlib.sha512(nonce + message).digest()
+    detached_message_sig = umsgpack.unpack(input)
+    message_digest = hashlib.sha512(header_hash + message).digest()
     debug("digest:", message_digest)
     message_sig_text = b"saltpack\0detached signature\0" + message_digest
     message_sig = detached_message_sig + message_sig_text
