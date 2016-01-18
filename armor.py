@@ -246,8 +246,8 @@ def armor(input_bytes, *, alphabet=b62alphabet, block_size=32, raw=False,
     words = chunk_iterable(output, 15)
     sentences = chunk_iterable(words, 200)
     joined = '\n'.join(' '.join(sentence) for sentence in sentences)
-    header = 'BEGIN SALTPACK MESSAGE.\n\n'
-    footer = '.\n\nEND SALTPACK MESSAGE.'
+    header = 'BEGIN SALTPACK MESSAGE. '
+    footer = '. END SALTPACK MESSAGE.'
     return header + joined + footer
 
 
