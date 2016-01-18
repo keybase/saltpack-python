@@ -132,7 +132,7 @@ def verify_attached(message):
         payload_digest = hashlib.sha512(
             header_hash + packetnum_64 + chunk).digest()
         debug("digest:", payload_digest)
-        payload_sig_text = b"saltpack\0attached signature\0" + payload_digest
+        payload_sig_text = b"saltpack attached signature\0" + payload_digest
         payload_sig = detached_payload_sig + payload_sig_text
         libnacl.crypto_sign_open(payload_sig, public_key)
         if chunk == b"":
@@ -152,7 +152,7 @@ def verify_detached(message, signature):
     debug("sig:", detached_message_sig)
     message_digest = hashlib.sha512(header_hash + message).digest()
     debug("digest:", message_digest)
-    message_sig_text = b"saltpack\0detached signature\0" + message_digest
+    message_sig_text = b"saltpack detached signature\0" + message_digest
     message_sig = detached_message_sig + message_sig_text
     libnacl.crypto_sign_open(message_sig, public_key)
     return message
