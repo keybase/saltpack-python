@@ -92,7 +92,7 @@ def sign_attached(message, private_key, chunk_size):
         packetnum_64 = packetnum.to_bytes(8, 'big')
         payload_digest = hashlib.sha512(
             header_hash + packetnum_64 + chunk).digest()
-        payload_sig_text = b"saltpack\0attached signature\0" + payload_digest
+        payload_sig_text = b"saltpack attached signature\0" + payload_digest
         payload_sig = libnacl.crypto_sign(payload_sig_text, private_key)
         detached_payload_sig = payload_sig[:64]
         packet = [
@@ -110,7 +110,7 @@ def sign_detached(message, private_key):
     public_key = private_key[32:]
     header_hash = write_header(public_key, 2, output)
     message_digest = hashlib.sha512(header_hash + message).digest()
-    message_sig_text = b"saltpack\0detached signature\0" + message_digest
+    message_sig_text = b"saltpack detached signature\0" + message_digest
     message_sig = libnacl.crypto_sign(message_sig_text, private_key)
     detached_message_sig = message_sig[:64]
     umsgpack.pack(detached_message_sig, output)
