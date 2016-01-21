@@ -181,7 +181,7 @@ def do_sign(args):
         message_type = "DETACHED SIGNATURE"
         output = sign_detached(encoded_message, private_key)
     else:
-        message_type = "ATTACHED SIGNATURE"
+        message_type = "SIGNED MESSAGE"
         output = sign_attached(encoded_message, private_key, chunk_size)
     # Armor the message.
     if args['--armor']:
