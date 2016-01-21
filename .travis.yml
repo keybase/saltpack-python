@@ -1,0 +1,9 @@
+language: python
+python:
+  - "3.5"
+install:
+  - pip install libnacl docopt umsgpack
+script:
+  - ./test_encrypt.py
+  - ./test_sign.py
+  - ./test_armor.py
