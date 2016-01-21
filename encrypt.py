@@ -21,7 +21,7 @@ If no private key is given, the default is 32 zero bytes. If no recipients are
 given, the default is the sender's own public key.
 
 Options:
-    -a --armor          encode/decode with saltpack armor
+    -b --binary         don't use saltpack armor
     -c --chunk=<size>   size of payload chunks, default 1 MB
     -m --message=<msg>  message text, instead of reading stdin
     --debug             debug mode
@@ -307,7 +307,7 @@ def do_encrypt(args):
         recipients,
         encoded_message,
         chunk_size)
-    if args['--armor']:
+    if not args['--binary']:
         output = (armor.armor(output, message_type="ENCRYPTED MESSAGE") +
                   '\n').encode()
     sys.stdout.buffer.write(output)
@@ -315,7 +315,7 @@ def do_encrypt(args):
 
 def do_decrypt(args):
     message = sys.stdin.buffer.read()
-    if args['--armor']:
+    if not args['--binary']:
         message = armor.dearmor(message.decode())
     private = get_private(args)
     decoded_message = decrypt(message, private)

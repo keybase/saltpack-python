@@ -2,21 +2,22 @@
 
 import tempfile
 
-from duct import cmd, sh
+from duct import cmd, sh, BYTES
 
 message = "foo bar"
 
 # attached
-signed = sh("./sign.py sign --armor").read(input=message)
+signed = sh("./sign.py sign").read(input=message)
 print(signed)
-verified = sh("./sign.py verify --armor --debug").read(input=signed)
+verified = sh("./sign.py verify --debug").read(input=signed)
 assert message == verified, repr(message) + " != " + repr(verified)
 
 # detached
-detached = sh("./sign.py sign --armor --detached").read(input=message)
+detached = sh("./sign.py sign --binary --detached").read(
+    input=message, stdout=BYTES)
 print(detached)
 _, temp = tempfile.mkstemp()
-with open(temp, 'w') as f:
+with open(temp, 'wb') as f:
     f.write(detached)
-command = ["./sign.py", "verify", "--signature", temp, "--armor", "--debug"]
+command = ["./sign.py", "verify", "--signature", temp, "--binary", "--debug"]
 cmd(*command).read(input=message)

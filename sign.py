@@ -24,7 +24,7 @@ Usage:
 If no private key is given, the default is random.
 
 Options:
-    -a --armor             encode/decode with saltpack armor
+    -c --binary            don't use saltpack armor
     -c --chunk=<size>      size of payload chunks, default 1 MB
     -d --detached          make a detached signature
     -m --message=<msg>     message text, instead of reading stdin
@@ -184,7 +184,7 @@ def do_sign(args):
         message_type = "SIGNED MESSAGE"
         output = sign_attached(encoded_message, private_key, chunk_size)
     # Armor the message.
-    if args['--armor']:
+    if not args['--binary']:
         output = (armor.armor(output, message_type=message_type) +
                   '\n').encode()
     sys.stdout.buffer.write(output)
@@ -207,7 +207,7 @@ def do_verify(args):
     else:
         signature = message
     # Dearmor the signature.
-    if args['--armor']:
+    if not args['--binary']:
         signature = armor.dearmor(signature.decode())
     # Verify the message.
     if detached_mode:
