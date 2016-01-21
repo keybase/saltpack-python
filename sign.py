@@ -178,12 +178,15 @@ def do_sign(args):
         chunk_size = 10**6
     # Sign the message.
     if args['--detached']:
+        message_type = "DETACHED SIGNATURE"
         output = sign_detached(encoded_message, private_key)
     else:
+        message_type = "ATTACHED SIGNATURE"
         output = sign_attached(encoded_message, private_key, chunk_size)
     # Armor the message.
     if args['--armor']:
-        output = (armor.armor(output) + '\n').encode()
+        output = (armor.armor(output, message_type=message_type) +
+                  '\n').encode()
     sys.stdout.buffer.write(output)
 
 

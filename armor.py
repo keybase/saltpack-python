@@ -236,7 +236,7 @@ def read_between_periods(s):
 
 
 def armor(input_bytes, *, alphabet=b62alphabet, block_size=32, raw=False,
-          shift=False):
+          shift=False, message_type='MESSAGE'):
     chunks = chunk_iterable(input_bytes, block_size)
     output = ""
     for chunk in chunks:
@@ -246,8 +246,8 @@ def armor(input_bytes, *, alphabet=b62alphabet, block_size=32, raw=False,
     words = chunk_iterable(output, 15)
     sentences = chunk_iterable(words, 200)
     joined = '\n'.join(' '.join(sentence) for sentence in sentences)
-    header = 'BEGIN SALTPACK MESSAGE. '
-    footer = '. END SALTPACK MESSAGE.'
+    header = 'BEGIN SALTPACK {}. '.format(message_type)
+    footer = '. END SALTPACK {}.'.format(message_type)
     return header + joined + footer
 
 

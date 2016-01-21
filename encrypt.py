@@ -308,7 +308,8 @@ def do_encrypt(args):
         encoded_message,
         chunk_size)
     if args['--armor']:
-        output = (armor.armor(output) + '\n').encode()
+        output = (armor.armor(output, message_type="ENCRYPTED MESSAGE") +
+                  '\n').encode()
     sys.stdout.buffer.write(output)
 
 
