@@ -107,7 +107,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
     payload_key = os.urandom(32)
 
     sender_secretbox = libnacl.crypto_secretbox(
-        msg=sender_public,
+        message=sender_public,
         nonce=SENDER_KEY_SECRETBOX_NONCE,
         key=payload_key)
 
@@ -155,7 +155,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
     for chunknum, chunk in enumerate(chunks_with_empty(message, chunk_size)):
         payload_nonce = PAYLOAD_NONCE_PREFIX + chunknum.to_bytes(8, "big")
         payload_secretbox = libnacl.crypto_secretbox(
-            msg=chunk,
+            message=chunk,
             nonce=payload_nonce,
             key=payload_key)
         # Authenticate the hash of the payload for each recipient.
