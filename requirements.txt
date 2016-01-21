@@ -1,0 +1,4 @@
+docopt
+duct
+libnacl
+umsgpack
