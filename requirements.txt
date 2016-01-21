@@ -1,4 +1,4 @@
 docopt
 duct
 libnacl
-umsgpack
+u-msgpack-python
