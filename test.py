@@ -1,7 +1,12 @@
 #! /usr/bin/env python3
 
 import re
-from duct import sh
+import tempfile
+from duct import cmd, sh, BYTES
+
+#
+# test armor
+#
 
 inputstr = """\
 Two roads diverged in a yellow wood, and sorry I could not travel both
@@ -29,3 +34,38 @@ assert inputstr == raw_decoded
 efficient = sh('python -m saltpack efficient 64').read()
 print(efficient)
 assert re.search('3 bytes.*4 chars', efficient)
+
+#
+# test encryption
+#
+
+message = "foo bar"
+
+encrypted = sh("python -m saltpack encrypt").read(input=message, stdout=BYTES)
+
+print(encrypted)
+
+decrypted = sh("python -m saltpack decrypt --debug").read(input=encrypted)
+
+assert message == decrypted, repr(message) + " != " + repr(decrypted)
+
+#
+# test signing
+#
+
+# attached
+signed = sh("python -m saltpack sign").read(input=message)
+print(signed)
+verified = sh("python -m saltpack verify --debug").read(input=signed)
+assert message == verified, repr(message) + " != " + repr(verified)
+
+# detached
+detached = sh("python -m saltpack sign --binary --detached").read(
+    input=message, stdout=BYTES)
+print(detached)
+_, temp = tempfile.mkstemp()
+with open(temp, 'wb') as f:
+    f.write(detached)
+command = ["python", "-m", "saltpack", "verify", "--signature", temp,
+           "--binary", "--debug"]
+cmd(*command).read(input=message)
