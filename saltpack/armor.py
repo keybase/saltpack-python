@@ -1,30 +1,10 @@
 #! /usr/bin/env python3
 
-import docopt
 import io
 import math
 import os
 import sys
 import unicodedata
-
-
-__doc__ = '''\
-Usage:
-    armor.py efficient <alphabet_size> [<max-size>]
-    armor.py block [<bytes>] [options]
-    armor.py unblock [<chars>] [options]
-    armor.py armor [<bytes>] [options]
-    armor.py dearmor [<chars>] [options]
-
-Options:
-    -a --alphabet=<str>  the alphabet string to index into
-    --base64             use the Base64 alphabet and 3-byte blocks
-    --base85             use the Base85 alphabet and 4-byte blocks
-    -b --block=<size>    the block size
-    --shift              shift the encoded number left as far as possible
-    --twitter            fit as much as possible into 140 characters
-    --raw                omit 'BEGIN ARMOR.' and 'END ARMOR.'
-'''
 
 
 b64alphabet = \
@@ -356,21 +336,3 @@ def do_dearmor(args):
     dearmored = dearmor(chars_in, alphabet=alphabet,
                         char_block_size=char_block_size, raw=raw, shift=shift)
     sys.stdout.buffer.write(dearmored)
-
-
-def main():
-    args = docopt.docopt(__doc__)
-
-    if args['efficient']:
-        do_efficient(args)
-    elif args['block']:
-        do_block(args)
-    elif args['unblock']:
-        do_unblock(args)
-    elif args['armor']:
-        do_armor(args)
-    elif args['dearmor']:
-        do_dearmor(args)
-
-if __name__ == '__main__':
-    main()

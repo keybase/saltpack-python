@@ -7,47 +7,11 @@ import os
 import sys
 import umsgpack
 
-import docopt
 import libnacl
 
-# ./encrypt.py
-from encrypt import json_repr, chunks_with_empty
-
-# ./armor.py
-import armor
-
-__doc__ = '''\
-Usage:
-    sign.py sign [<private>] [options]
-    sign.py verify [options]
-
-If no private key is given, the default is random.
-
-Options:
-    -c --binary            don't use saltpack armor
-    -c --chunk=<size>      size of payload chunks, default 1 MB
-    -d --detached          make a detached signature
-    -m --message=<msg>     message text, instead of reading stdin
-    -s --signature=<file>  verify with a detached signature
-    --debug                debug mode
-'''
-
-DEBUG_MODE = False
-
-
-def tohex(b):
-    return binascii.hexlify(b).decode()
-
-
-def debug(*args):
-    # hexify any bytes values
-    args = list(args)
-    for i, arg in enumerate(args):
-        if isinstance(arg, bytes):
-            args[i] = tohex(args[i])
-    # print to stderr, if we're in debug mode
-    if DEBUG_MODE:
-        print(*args, file=sys.stderr)
+from .debug import debug
+from .encrypt import json_repr, chunks_with_empty
+from . import armor
 
 
 def write_header(public_key, mode, output):
@@ -216,18 +180,3 @@ def do_verify(args):
     else:
         output = verify_attached(signature)
         sys.stdout.buffer.write(output)
-
-
-def main():
-    global DEBUG_MODE
-    args = docopt.docopt(__doc__)
-    DEBUG_MODE = args['--debug']
-
-    if args['sign']:
-        do_sign(args)
-    else:
-        do_verify(args)
-
-
-if __name__ == '__main__':
-    main()

@@ -4,10 +4,10 @@ from duct import sh, BYTES
 
 message = "foo bar"
 
-encrypted = sh("./encrypt.py encrypt").read(input=message, stdout=BYTES)
+encrypted = sh("python -m saltpack encrypt").read(input=message, stdout=BYTES)
 
 print(encrypted)
 
-decrypted = sh("./encrypt.py decrypt --debug").read(input=encrypted)
+decrypted = sh("python -m saltpack decrypt --debug").read(input=encrypted)
 
 assert message == decrypted, repr(message) + " != " + repr(decrypted)

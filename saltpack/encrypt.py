@@ -8,33 +8,9 @@ import sys
 
 import umsgpack
 import libnacl
-import docopt
 
-import armor
-
-__doc__ = '''\
-Usage:
-    encrypt.py encrypt [<private>] [<recipients>...] [options]
-    encrypt.py decrypt [<private>] [options]
-
-If no private key is given, the default is 32 zero bytes. If no recipients are
-given, the default is the sender's own public key.
-
-Options:
-    -b --binary         don't use saltpack armor
-    -c --chunk=<size>   size of payload chunks, default 1 MB
-    -m --message=<msg>  message text, instead of reading stdin
-    --debug             debug mode
-'''
-
-FORMAT_VERSION = 1
-
-DEBUG_MODE = False
-
-# Hardcode the keys for everyone involved.
-# ----------------------------------------
-
-jack_private = b'\xaa' * 32
+from . import armor
+from .debug import debug, tohex
 
 
 # Utility functions.
@@ -70,21 +46,6 @@ def json_repr(obj):
         else:
             return obj
     return json.dumps(_recurse_repr(obj), indent='  ')
-
-
-def tohex(b):
-    return binascii.hexlify(b).decode()
-
-
-def debug(*args):
-    # hexify any bytes values
-    args = list(args)
-    for i, arg in enumerate(args):
-        if isinstance(arg, bytes):
-            args[i] = tohex(args[i])
-    # print to stderr, if we're in debug mode
-    if DEBUG_MODE:
-        print(*args, file=sys.stderr)
 
 
 # All the important bits!
@@ -320,17 +281,3 @@ def do_decrypt(args):
     private = get_private(args)
     decoded_message = decrypt(message, private)
     sys.stdout.buffer.write(decoded_message)
-
-
-def main():
-    global DEBUG_MODE
-    args = docopt.docopt(__doc__)
-    DEBUG_MODE = args['--debug']
-    if args['encrypt']:
-        do_encrypt(args)
-    else:
-        do_decrypt(args)
-
-
-if __name__ == '__main__':
-    main()
