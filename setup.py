@@ -4,8 +4,9 @@ setuptools.setup(
     name='saltpack',
     version='0.0.1',
     license='MIT',
-    py_modules=['saltpack'],
-    # package_data={'saltpack': 'unicode'},
+    packages=['saltpack'],
+    package_data={'saltpack': ['unicode/*']},
+    install_requires=['docopt', 'libnacl', 'u-msgpack-python'],
     entry_points={
         'console_scripts': [
             'saltpack=saltpack.main:main',
