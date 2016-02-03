@@ -1,4 +1,0 @@
-docopt
-duct
-libnacl
-u-msgpack-python
