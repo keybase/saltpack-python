@@ -11,11 +11,11 @@ Usage:
     saltpack decrypt [<private>] [options]
     saltpack sign [<private>] [options]
     saltpack verify [options]
-    saltpack efficient <alphabet_size> [<max-size>]
-    saltpack block [<bytes>] [options]
-    saltpack unblock [<chars>] [options]
     saltpack armor [<bytes>] [options]
     saltpack dearmor [<chars>] [options]
+    saltpack block [<bytes>] [options]
+    saltpack unblock [<chars>] [options]
+    saltpack efficient <alphabet_size> [<max-size>]
 
 For encrypt, if no private key is given, the default is 32 zero bytes. If no
 recipients are given, the default is the sender's own public key.
