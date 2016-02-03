@@ -1,8 +1,10 @@
 import setuptools
 
+import saltpack
+
 setuptools.setup(
     name='saltpack',
-    version='0.0.1',
+    version=saltpack.__version__,
     license='MIT',
     packages=['saltpack'],
     package_data={'saltpack': ['unicode/*']},
