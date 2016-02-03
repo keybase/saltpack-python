@@ -17,6 +17,9 @@ You can install this package with:
 pip install saltpack
 ```
 
+Requires Python 3, which may mean you need to use `pip3` instead of
+`pip`.
+
 A brief summary of the commands:
 
 - **encrypt** and **decrypt** deal with encrypted messages. Use the
