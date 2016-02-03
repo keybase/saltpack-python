@@ -1,13 +1,16 @@
 #! /usr/bin/env python3
 
 import binascii
+import hashlib
+import hmac
 import io
 import json
 import os
 import sys
 
 import umsgpack
-import libnacl
+import nacl.bindings
+from nacl.exceptions import CryptoError
 
 from . import armor
 from .debug import debug, tohex
@@ -62,12 +65,12 @@ assert len(PAYLOAD_NONCE_PREFIX) == 16
 
 
 def encrypt(sender_private, recipient_public_keys, message, chunk_size):
-    sender_public = libnacl.crypto_scalarmult_base(sender_private)
+    sender_public = nacl.bindings.crypto_scalarmult_base(sender_private)
     ephemeral_private = os.urandom(32)
-    ephemeral_public = libnacl.crypto_scalarmult_base(ephemeral_private)
+    ephemeral_public = nacl.bindings.crypto_scalarmult_base(ephemeral_private)
     payload_key = os.urandom(32)
 
-    sender_secretbox = libnacl.crypto_secretbox(
+    sender_secretbox = nacl.bindings.crypto_secretbox(
         message=sender_public,
         nonce=SENDER_KEY_SECRETBOX_NONCE,
         key=payload_key)
@@ -77,8 +80,8 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         # The recipient box holds the sender's long-term public key and the
         # symmetric message encryption key. It's encrypted for each recipient
         # with the ephemeral private key.
-        payload_key_box = libnacl.crypto_box(
-            msg=payload_key,
+        payload_key_box = nacl.bindings.crypto_box(
+            message=payload_key,
             nonce=PAYLOAD_KEY_BOX_NONCE,
             pk=recipient_public,
             sk=ephemeral_private)
@@ -95,7 +98,7 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
         recipient_pairs,
     ]
     header_bytes = umsgpack.packb(header)
-    header_hash = libnacl.crypto_hash(header_bytes)
+    header_hash = nacl.bindings.crypto_hash(header_bytes)
     double_encoded_header_bytes = umsgpack.packb(header_bytes)
     output = io.BytesIO()
     output.write(double_encoded_header_bytes)
@@ -104,8 +107,8 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
     recipient_mac_keys = []
     mac_keys_nonce = header_hash[:24]
     for recipient_public in recipient_public_keys:
-        mac_key_box = libnacl.crypto_box(
-            msg=b'\0'*32,
+        mac_key_box = nacl.bindings.crypto_box(
+            message=b'\0'*32,
             nonce=mac_keys_nonce,
             pk=recipient_public,
             sk=sender_private)
@@ -115,17 +118,18 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
     # Write the chunks.
     for chunknum, chunk in enumerate(chunks_with_empty(message, chunk_size)):
         payload_nonce = PAYLOAD_NONCE_PREFIX + chunknum.to_bytes(8, "big")
-        payload_secretbox = libnacl.crypto_secretbox(
+        payload_secretbox = nacl.bindings.crypto_secretbox(
             message=chunk,
             nonce=payload_nonce,
             key=payload_key)
         # Authenticate the hash of the payload for each recipient.
-        payload_hash = libnacl.crypto_hash(
+        payload_hash = nacl.bindings.crypto_hash(
             header_hash + payload_nonce + payload_secretbox)
         hash_authenticators = []
         for mac_key in recipient_mac_keys:
-            authenticator = libnacl.crypto_auth(payload_hash, mac_key)
-            hash_authenticators.append(authenticator)
+            hmac_digest = hmac.new(mac_key, digestmod=hashlib.sha512)
+            hmac_digest.update(payload_hash)
+            hash_authenticators.append(hmac_digest.digest()[:32])
         packet = [
             hash_authenticators,
             payload_secretbox,
@@ -139,7 +143,7 @@ def decrypt(input, recipient_private):
     stream = io.BytesIO(input)
     # Parse the header.
     header_bytes = umsgpack.unpack(stream)
-    header_hash = libnacl.crypto_hash(header_bytes)
+    header_hash = nacl.bindings.crypto_hash(header_bytes)
     header = umsgpack.unpackb(header_bytes)
     debug('header:', json_repr(header))
     debug('header hash:', header_hash)
@@ -152,7 +156,7 @@ def decrypt(input, recipient_private):
         recipient_pairs,
         *_,  # ignore additional elements
     ] = header
-    ephemeral_beforenm = libnacl.crypto_box_beforenm(
+    ephemeral_beforenm = nacl.bindings.crypto_box_beforenm(
         pk=ephemeral_public,
         sk=recipient_private)
 
@@ -160,24 +164,24 @@ def decrypt(input, recipient_private):
     for recipient_index, pair in enumerate(recipient_pairs):
         [_, payload_key_box, *_] = pair
         try:
-            payload_key = libnacl.crypto_box_open_afternm(
-                ctxt=payload_key_box,
+            payload_key = nacl.bindings.crypto_box_open_afternm(
+                ciphertext=payload_key_box,
                 nonce=PAYLOAD_KEY_BOX_NONCE,
                 k=ephemeral_beforenm)
             break
-        except ValueError:
+        except CryptoError:
             continue
     else:
         raise RuntimeError('Failed to find matching recipient.')
 
-    sender_public = libnacl.crypto_secretbox_open(
-        ctxt=sender_secretbox,
+    sender_public = nacl.bindings.crypto_secretbox_open(
+        ciphertext=sender_secretbox,
         nonce=SENDER_KEY_SECRETBOX_NONCE,
         key=payload_key)
 
     mac_key_nonce = header_hash[:24]
-    mac_key_box = libnacl.crypto_box(
-        msg=b'\0'*32,
+    mac_key_box = nacl.bindings.crypto_box(
+        message=b'\0'*32,
         nonce=mac_key_nonce,
         pk=sender_public,
         sk=recipient_private)
@@ -201,17 +205,17 @@ def decrypt(input, recipient_private):
         # Verify the secretbox hash.
         payload_nonce = PAYLOAD_NONCE_PREFIX + chunknum.to_bytes(8, "big")
         debug('payload nonce:', payload_nonce)
-        payload_hash = libnacl.crypto_hash(
+        payload_hash = nacl.bindings.crypto_hash(
             header_hash + payload_nonce + payload_secretbox)
         debug('hash to authenticate:', payload_hash)
-        libnacl.crypto_auth_verify(
-            tok=hash_authenticator,
-            msg=payload_hash,
-            key=mac_key)
+        hmac_digest = hmac.new(mac_key, digestmod=hashlib.sha512)
+        hmac_digest.update(payload_hash)
+        our_authenticator = hmac_digest.digest()[:32]
+        hmac.compare_digest(hash_authenticator, our_authenticator)
 
         # Open the payload secretbox.
-        chunk = libnacl.crypto_secretbox_open(
-            ctxt=payload_secretbox,
+        chunk = nacl.bindings.crypto_secretbox_open(
+            ciphertext=payload_secretbox,
             nonce=payload_nonce,
             key=payload_key)
         output.write(chunk)
@@ -247,7 +251,7 @@ def get_recipients(args):
     else:
         # Without explicit recipients, just send to yourself.
         private = get_private(args)
-        public = libnacl.crypto_scalarmult_base(private)
+        public = nacl.bindings.crypto_scalarmult_base(private)
         return [public]
 
 

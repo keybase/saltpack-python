@@ -17,7 +17,7 @@ setuptools.setup(
     url="https://github.com/keybase/saltpack-python",
     packages=['saltpack'],
     package_data={'saltpack': ['VERSION', 'unicode/*']},
-    install_requires=['docopt', 'libnacl', 'u-msgpack-python'],
+    install_requires=['docopt', 'pynacl', 'u-msgpack-python'],
     entry_points={
         'console_scripts': [
             'saltpack=saltpack.main:main',

@@ -7,7 +7,7 @@ import os
 import sys
 import umsgpack
 
-import libnacl
+import nacl.bindings
 
 from .debug import debug
 from .encrypt import json_repr, chunks_with_empty
@@ -57,7 +57,7 @@ def sign_attached(message, private_key, chunk_size):
         payload_digest = hashlib.sha512(
             header_hash + packetnum_64 + chunk).digest()
         payload_sig_text = b"saltpack attached signature\0" + payload_digest
-        payload_sig = libnacl.crypto_sign(payload_sig_text, private_key)
+        payload_sig = nacl.bindings.crypto_sign(payload_sig_text, private_key)
         detached_payload_sig = payload_sig[:64]
         packet = [
             detached_payload_sig,
@@ -75,7 +75,7 @@ def sign_detached(message, private_key):
     header_hash = write_header(public_key, 2, output)
     message_digest = hashlib.sha512(header_hash + message).digest()
     message_sig_text = b"saltpack detached signature\0" + message_digest
-    message_sig = libnacl.crypto_sign(message_sig_text, private_key)
+    message_sig = nacl.bindings.crypto_sign(message_sig_text, private_key)
     detached_message_sig = message_sig[:64]
     umsgpack.pack(detached_message_sig, output)
     return output.getvalue()
@@ -98,7 +98,7 @@ def verify_attached(message):
         debug("digest:", payload_digest)
         payload_sig_text = b"saltpack attached signature\0" + payload_digest
         payload_sig = detached_payload_sig + payload_sig_text
-        libnacl.crypto_sign_open(payload_sig, public_key)
+        nacl.bindings.crypto_sign_open(payload_sig, public_key)
         if chunk == b"":
             break
         output.write(chunk)
@@ -118,7 +118,7 @@ def verify_detached(message, signature):
     debug("digest:", message_digest)
     message_sig_text = b"saltpack detached signature\0" + message_digest
     message_sig = detached_message_sig + message_sig_text
-    libnacl.crypto_sign_open(message_sig, public_key)
+    nacl.bindings.crypto_sign_open(message_sig, public_key)
     return message
 
 
@@ -134,7 +134,7 @@ def do_sign(args):
         private_key = binascii.unhexlify(args['<private>'])
         assert len(private_key) == 64
     else:
-        private_key = libnacl.crypto_sign_keypair()[1]
+        private_key = nacl.bindings.crypto_sign_keypair()[1]
     # Get the chunk size.
     if args['--chunk']:
         chunk_size = int(args['--chunk'])
