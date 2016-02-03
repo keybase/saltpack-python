@@ -211,7 +211,8 @@ def decrypt(input, recipient_private):
         hmac_digest = hmac.new(mac_key, digestmod=hashlib.sha512)
         hmac_digest.update(payload_hash)
         our_authenticator = hmac_digest.digest()[:32]
-        hmac.compare_digest(hash_authenticator, our_authenticator)
+        if not hmac.compare_digest(hash_authenticator, our_authenticator):
+            raise HMACError("HMAC failed to verify.")
 
         # Open the payload secretbox.
         chunk = nacl.bindings.crypto_secretbox_open(
@@ -285,3 +286,7 @@ def do_decrypt(args):
     private = get_private(args)
     decoded_message = decrypt(message, private)
     sys.stdout.buffer.write(decoded_message)
+
+
+class HMACError(RuntimeError):
+    pass
