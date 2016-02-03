@@ -7,18 +7,12 @@ play with commands like:
 saltpack encrypt -m "foo" | saltpack decrypt --debug
 ```
 
-(Commands like `encrypt` and `sign` that normally require a private key,
-will fall back to some default key if you don't provide one, to make it
-easier to play with the format.)
-
-You can install this package with:
+Install with `pip` or `pip3`, depending on what your system calls Python
+3's version of `pip`:
 
 ```
 pip install saltpack
 ```
-
-Requires Python 3, which may mean you need to use `pip3` instead of
-`pip`.
 
 A brief summary of the commands:
 
@@ -26,10 +20,10 @@ A brief summary of the commands:
   `--binary` flag to skip the ASCII armoring. The default private key is
   32 zero bytes, and the default recipients list is just the sender.
   They will read from stdin unless you provide the `--message` flag.
-- **sign** and **verify** deal with signed messages. These also
-  understand `--binary` and `--message`. The `--detached` flag (for
-  signing) and the `--signature <file>` flag (for verifying) invoke the
-  detached signing mode.
+- **sign** and **verify** deal with signed messages. The default private
+  key is randomly generated. These also understand `--binary` and
+  `--message`. The `--detached` flag (for signing) and the `--signature
+  <file>` flag (for verifying) invoke the detached signing mode.
 - **armor** and **dearmor** commands read input from stdin and either
   encode it or decode it with saltpack's base 62 ASCII armor. The
   `--raw` flag skips the "BEGIN..." header and "END..." footer. Note
