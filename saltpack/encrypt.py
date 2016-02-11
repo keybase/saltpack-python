@@ -94,9 +94,9 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size, *,
         recipient_pairs.append(pair)
 
     header = [
-        "SaltBox",  # format name
-        [1, 0],     # major and minor version
-        0,          # mode (encryption, as opposed to signing/detached)
+        "saltpack",  # format name
+        [1, 0],      # major and minor version
+        0,           # mode (encryption, as opposed to signing/detached)
         ephemeral_public,
         sender_secretbox,
         recipient_pairs,
@@ -163,6 +163,13 @@ def decrypt(input, recipient_private):
     ephemeral_beforenm = nacl.bindings.crypto_box_beforenm(
         pk=ephemeral_public,
         sk=recipient_private)
+
+    if format_name != "saltpack":
+        raise BadFormatError(
+            "Unrecognized format name: '{}'".format(format_name))
+    if major_version != 1:
+        raise BadVersionError(
+            "Incompatible major version: {}".format(major_version))
 
     # Try decrypting each sender box, until we find the one that works.
     for recipient_index, pair in enumerate(recipient_pairs):
@@ -292,6 +299,14 @@ def do_decrypt(args):
     private = get_private(args)
     decoded_message = decrypt(message, private)
     sys.stdout.buffer.write(decoded_message)
+
+
+class BadFormatError(RuntimeError):
+    pass
+
+
+class BadVersionError(RuntimeError):
+    pass
 
 
 class HMACError(RuntimeError):
