@@ -32,10 +32,11 @@ Options:
     -d --detached          make a detached signature
     --debug                debug mode
     -m --message=<msg>     message text, instead of reading stdin
+    --raw                  omit armor header and footer
     --shift                shift the encoded number left as far as possible
     -s --signature=<file>  verify with a detached signature
     --twitter              for armor, use the Twitter alphabet
-    --raw                  omit armor header and footer
+    --visible              make the encryption recipients visible
 '''
 
 FORMAT_VERSION = 1

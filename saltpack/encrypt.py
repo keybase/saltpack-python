@@ -64,7 +64,8 @@ PAYLOAD_NONCE_PREFIX = b"saltpack_ploadsb"
 assert len(PAYLOAD_NONCE_PREFIX) == 16
 
 
-def encrypt(sender_private, recipient_public_keys, message, chunk_size):
+def encrypt(sender_private, recipient_public_keys, message, chunk_size, *,
+            visible_recipients=False):
     sender_public = nacl.bindings.crypto_scalarmult_base(sender_private)
     ephemeral_private = os.urandom(32)
     ephemeral_public = nacl.bindings.crypto_scalarmult_base(ephemeral_private)
@@ -86,7 +87,10 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size):
             pk=recipient_public,
             sk=ephemeral_private)
         # None is for the recipient public key, which is optional.
-        pair = [None, payload_key_box]
+        if visible_recipients:
+            pair = [recipient_public, payload_key_box]
+        else:
+            pair = [None, payload_key_box]
         recipient_pairs.append(pair)
 
     header = [
@@ -258,6 +262,7 @@ def get_recipients(args):
 
 def do_encrypt(args):
     message = args['--message']
+    visible_recipients = args['--visible']
     if message is None:
         encoded_message = sys.stdin.buffer.read()
     else:
@@ -272,7 +277,8 @@ def do_encrypt(args):
         sender,
         recipients,
         encoded_message,
-        chunk_size)
+        chunk_size,
+        visible_recipients=visible_recipients)
     if not args['--binary']:
         output = (armor.armor(output, message_type="ENCRYPTED MESSAGE") +
                   '\n').encode()
