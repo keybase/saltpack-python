@@ -62,7 +62,7 @@ def get_twitter_alphabet():
     '''We want to use every possible code point we can. That means starting at
     0 and going all the way up to 0x10ffff, the largest encodable value.
     Because Twitter does NFC Unicode normalization, we need to omit characters
-    that don't have NFC_Quick_Check=Yes property. We also need to omit
+    that don't have the NFC_Quick_Check=Yes property. We also need to omit
     characters that Twitter might strip, as well as the surrogate characters,
     which aren't legal to encode.'''
     non_quick_check_code_points = parse_quick_check()
