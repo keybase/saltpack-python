@@ -66,6 +66,3 @@ def main():
         sign.do_verify(args)
     else:
         raise RuntimeError("unreachable")
-
-if __name__ == '__main__':
-    main()
