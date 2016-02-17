@@ -73,7 +73,7 @@ def get_twitter_alphabet():
         c = chr(i)
         if unicodedata.category(c) in bad_unicode_categories:
             continue
-        buffer.write(chr(i))
+        buffer.write(c)
     return buffer.getvalue()
 
 
