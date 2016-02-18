@@ -4,7 +4,6 @@ import io
 import math
 import os
 import sys
-import unicodedata
 
 
 b64alphabet = \
@@ -18,15 +17,16 @@ b85alphabet = \
     "[\\]^_`abcdefghijklmnopqrstu"
 
 here = os.path.dirname(__file__)
-props = os.path.join(here, 'unicode/DerivedNormalizationProps.txt')
+props_file = os.path.join(here, 'unicode/DerivedNormalizationProps.txt')
+categories_file = os.path.join(here, 'unicode/UnicodeData.txt')
 
 
-def parse_quick_check():
+def parse_non_quick_check():
     '''The file DerivedNormalizationProps.txt defines all the code points with
     NFC_Quick_Check values of No or Maybe. Parse these out, so that we can
     exclude them from the Twitter alphabet.'''
     bad_code_points = set()
-    with open(props) as f:
+    with open(props_file) as f:
         for line in f:
             # Strip comments.
             comment_start = line.find('#')
@@ -58,6 +58,29 @@ bad_unicode_categories = {
 }
 
 
+def parse_bad_unicode_categories():
+    '''The file UnicodeData.txt gives the category for every defined Unicode
+    character, according to Unicode version 8.0.0. We use this checked-in file
+    instead of unicodedata.category(), because that function uses an older
+    version of the Unicode standard in older Python versions.'''
+    bad_code_points = set()
+    with open(categories_file) as f:
+        for line in f:
+            code_str, name, category = line.split(';')[:3]
+            if category not in bad_unicode_categories:
+                continue
+            code = int(code_str, 16)
+            # Some lines represent ranges.
+            if name.endswith(", First>"):
+                last_code_str = next(f).split(';')[0]
+                last_code = int(last_code_str, 16)
+                for i in range(code, last_code+1):
+                    bad_code_points.add(i)
+            else:
+                bad_code_points.add(code)
+    return bad_code_points
+
+
 def get_twitter_alphabet():
     '''We want to use every possible code point we can. That means starting at
     0 and going all the way up to 0x10ffff, the largest encodable value.
@@ -65,14 +88,15 @@ def get_twitter_alphabet():
     that don't have the NFC_Quick_Check=Yes property. We also need to omit
     characters that Twitter might strip, as well as the surrogate characters,
     which aren't legal to encode.'''
-    non_quick_check_code_points = parse_quick_check()
+    non_quick_check_code_points = parse_non_quick_check()
+    bad_category_code_points = parse_bad_unicode_categories()
     buffer = io.StringIO()
     for i in range(0x110000):
         if i in non_quick_check_code_points:
             continue
-        c = chr(i)
-        if unicodedata.category(c) in bad_unicode_categories:
+        if i in bad_category_code_points:
             continue
+        c = chr(i)
         buffer.write(c)
     return buffer.getvalue()
 
