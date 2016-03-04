@@ -3,7 +3,7 @@
 import binascii
 import re
 import tempfile
-from duct import cmd, sh, BYTES
+from duct import cmd, sh
 import pytest
 
 import saltpack
@@ -50,7 +50,7 @@ message = "foo bar"
 
 def test_encryption():
     encrypted = sh("python -m saltpack encrypt") \
-                .read(input=message, stdout=BYTES)
+                .read(input=message, decode=False)
     print(encrypted)
     decrypted = sh("python -m saltpack decrypt --debug").read(input=encrypted)
     assert message == decrypted, repr(message) + " != " + repr(decrypted)
@@ -163,7 +163,7 @@ def test_sign_attached():
 
 def test_sign_detached():
     detached = sh("python -m saltpack sign --binary --detached").read(
-        input=message, stdout=BYTES)
+        input=message, decode=False)
     print(detached)
     _, temp = tempfile.mkstemp()
     with open(temp, 'wb') as f:
