@@ -1,7 +1,10 @@
 language: python
 python:
+  - "3.3"
+  - "3.4"
   - "3.5"
+  - "nightly"
 install:
-  - pip install tox
+  - pip install pytest
 script:
-  - tox
+  - py.test
