@@ -5,6 +5,7 @@ python:
   - "3.5"
   - "nightly"
 install:
+  - pip install .
   - pip install -r requirements-dev.txt
 script:
   - py.test
