@@ -110,7 +110,7 @@ lvl9Kuq53Fj6u8E fc2DLU9rNtrn03H BJ5wvg. END KEYBASE SALTPACK ENCRYPTED MESSAGE.
 
 def test_decrypt_HMAC_failure():
     ciphertext_binary = saltpack.armor.dearmor(keybase_test_ciphertext_corrupt)
-    with pytest.raises(saltpack.encrypt.HMACError):
+    with pytest.raises(saltpack.error.HMACError):
         saltpack.encrypt.decrypt(
             ciphertext_binary,
             binascii.unhexlify(keybase_test_secret_key))
@@ -131,7 +131,7 @@ bad_format_message = (
 
 
 def test_decrypt_bad_format():
-    with pytest.raises(saltpack.encrypt.BadFormatError):
+    with pytest.raises(saltpack.error.BadFormatError):
         saltpack.encrypt.decrypt(bad_format_message, b'\0'*32)
 
 
@@ -150,7 +150,7 @@ bad_version_message = (
 
 
 def test_decrypt_bad_version():
-    with pytest.raises(saltpack.encrypt.BadVersionError):
+    with pytest.raises(saltpack.error.BadVersionError):
         saltpack.encrypt.decrypt(bad_version_message, b'\0'*32)
 
 

@@ -13,6 +13,7 @@ import nacl.bindings
 from nacl.exceptions import CryptoError
 
 from . import armor
+from . import error
 from .debug import debug, tohex
 
 
@@ -165,10 +166,10 @@ def decrypt(input, recipient_private):
         sk=recipient_private)
 
     if format_name != "saltpack":
-        raise BadFormatError(
+        raise error.BadFormatError(
             "Unrecognized format name: '{}'".format(format_name))
     if major_version != 1:
-        raise BadVersionError(
+        raise error.BadVersionError(
             "Incompatible major version: {}".format(major_version))
 
     # Try decrypting each sender box, until we find the one that works.
@@ -223,7 +224,7 @@ def decrypt(input, recipient_private):
         hmac_digest.update(payload_hash)
         our_authenticator = hmac_digest.digest()[:32]
         if not hmac.compare_digest(hash_authenticator, our_authenticator):
-            raise HMACError("HMAC failed to verify.")
+            raise error.HMACError("HMAC failed to verify.")
 
         # Open the payload secretbox.
         chunk = nacl.bindings.crypto_secretbox_open(
@@ -299,15 +300,3 @@ def do_decrypt(args):
     private = get_private(args)
     decoded_message = decrypt(message, private)
     sys.stdout.buffer.write(decoded_message)
-
-
-class BadFormatError(RuntimeError):
-    pass
-
-
-class BadVersionError(RuntimeError):
-    pass
-
-
-class HMACError(RuntimeError):
-    pass

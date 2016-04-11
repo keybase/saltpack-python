@@ -12,6 +12,7 @@ import nacl.bindings
 from .debug import debug
 from .encrypt import json_repr, chunks_with_empty
 from . import armor
+from . import error
 
 
 def write_header(public_key, mode, output):
@@ -36,13 +37,19 @@ def read_header(stream):
     debug("header packet:", json_repr(header))
     debug("header hash:", json_repr(header_hash))
     [
-        name,
-        [major, minor],
+        format_name,
+        [major_version, minor_version],
         mode,
         public_key,
         nonce,
         *_,  # ignore additional elements
     ] = header
+    if format_name != "saltpack":
+        raise error.BadFormatError(
+            "Unrecognized format name: '{}'".format(format_name))
+    if major_version != 1:
+        raise error.BadVersionError(
+            "Incompatible major version: {}".format(major_version))
     return public_key, header_hash
 
 

@@ -1,4 +1,4 @@
-from . import encrypt, sign, armor
+from . import encrypt, sign, armor, error
 
 from os import path
 
