@@ -58,11 +58,25 @@ def json_repr(obj):
 SENDER_KEY_SECRETBOX_NONCE = b"saltpack_sender_key_sbox"
 assert len(SENDER_KEY_SECRETBOX_NONCE) == 24
 
-PAYLOAD_KEY_BOX_NONCE = b"saltpack_payload_key_box"
-assert len(PAYLOAD_KEY_BOX_NONCE) == 24
+PAYLOAD_KEY_BOX_NONCE_V1 = b"saltpack_payload_key_box"
+assert len(PAYLOAD_KEY_BOX_NONCE_V1) == 24
+
+PAYLOAD_KEY_BOX_NONCE_PREFIX_V2 = b"saltpack_recipsb"
+assert len(PAYLOAD_KEY_BOX_NONCE_PREFIX_V2) == 16
 
 PAYLOAD_NONCE_PREFIX = b"saltpack_ploadsb"
 assert len(PAYLOAD_NONCE_PREFIX) == 16
+
+CURRENT_MAJOR_VERSION = 1
+CURRENT_MINOR_VERSION = 0
+
+
+def payload_key_nonce(version, recipient_index):
+    if version == 1:
+        return PAYLOAD_KEY_BOX_NONCE_V1
+    else:
+        return PAYLOAD_KEY_BOX_NONCE_PREFIX_V2 + \
+                recipient_index.to_bytes(8, "big")
 
 
 def encrypt(sender_private, recipient_public_keys, message, chunk_size, *,
@@ -78,13 +92,13 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size, *,
         key=payload_key)
 
     recipient_pairs = []
-    for recipient_public in recipient_public_keys:
+    for i, recipient_public in enumerate(recipient_public_keys):
         # The recipient box holds the sender's long-term public key and the
         # symmetric message encryption key. It's encrypted for each recipient
         # with the ephemeral private key.
         payload_key_box = nacl.bindings.crypto_box(
             message=payload_key,
-            nonce=PAYLOAD_KEY_BOX_NONCE,
+            nonce=payload_key_nonce(CURRENT_MAJOR_VERSION, i),
             pk=recipient_public,
             sk=ephemeral_private)
         # None is for the recipient public key, which is optional.
@@ -95,9 +109,11 @@ def encrypt(sender_private, recipient_public_keys, message, chunk_size, *,
         recipient_pairs.append(pair)
 
     header = [
+        # format name
         "saltpack",  # format name
-        [1, 0],      # major and minor version
-        0,           # mode (encryption, as opposed to signing/detached)
+        [CURRENT_MAJOR_VERSION, CURRENT_MINOR_VERSION],
+        # mode (encryption)
+        0,
         ephemeral_public,
         sender_secretbox,
         recipient_pairs,
@@ -168,9 +184,12 @@ def decrypt(input, recipient_private):
     if format_name != "saltpack":
         raise error.BadFormatError(
             "Unrecognized format name: '{}'".format(format_name))
-    if major_version != 1:
+    if major_version not in (1, 2):
         raise error.BadVersionError(
             "Incompatible major version: {}".format(major_version))
+    if mode != 0:
+        raise error.BadModeError(
+            "Incompatible mode: {}".format(mode))
 
     # Try decrypting each sender box, until we find the one that works.
     for recipient_index, pair in enumerate(recipient_pairs):
@@ -178,7 +197,7 @@ def decrypt(input, recipient_private):
         try:
             payload_key = nacl.bindings.crypto_box_open_afternm(
                 ciphertext=payload_key_box,
-                nonce=PAYLOAD_KEY_BOX_NONCE,
+                nonce=payload_key_nonce(major_version, recipient_index),
                 k=ephemeral_beforenm)
             break
         except CryptoError:
@@ -191,18 +210,37 @@ def decrypt(input, recipient_private):
         nonce=SENDER_KEY_SECRETBOX_NONCE,
         key=payload_key)
 
-    mac_key_nonce = header_hash[:24]
-    mac_key_box = nacl.bindings.crypto_box(
-        message=b'\0'*32,
-        nonce=mac_key_nonce,
-        pk=sender_public,
-        sk=recipient_private)
-    mac_key = mac_key_box[16:48]
+    if major_version == 1:
+        mac_key_nonce = header_hash[:24]
+        mac_key_box = nacl.bindings.crypto_box(
+            message=b'\0'*32,
+            nonce=mac_key_nonce,
+            pk=sender_public,
+            sk=recipient_private)
+        mac_key = mac_key_box[16:48]
+    else:
+        mac_key_nonce_base = bytearray(header_hash[:16])
+        mac_key_nonce_base[15] &= 254  # clear the last bit
+        mac_key_box_sender = nacl.bindings.crypto_box(
+            message=b'\0'*32,
+            nonce=bytes(mac_key_nonce_base) +
+                    recipient_index.to_bytes(8, "big"),
+            pk=sender_public,
+            sk=recipient_private)
+        mac_key_nonce_base[15] |= 1  # set the last bit
+        mac_key_box_ephemeral = nacl.bindings.crypto_box(
+            message=b'\0'*32,
+            nonce=bytes(mac_key_nonce_base) +
+                    recipient_index.to_bytes(8, "big"),
+            pk=ephemeral_public,
+            sk=recipient_private)
+        mac_key = nacl.bindings.crypto_hash(
+                mac_key_box_sender[-32:] + mac_key_box_ephemeral[-32:]
+                )[:32]
 
     debug('recipient index:', recipient_index)
     debug('sender key:', sender_public)
     debug('payload key:', payload_key)
-    debug('mac key nonce:', mac_key_nonce)
     debug('mac key:', mac_key)
 
     # Decrypt each of the packets.
@@ -211,14 +249,22 @@ def decrypt(input, recipient_private):
     while True:
         packet = umsgpack.unpack(stream)
         debug('packet:', json_repr(packet))
-        [hash_authenticators, payload_secretbox, *_] = packet
+        final_flag = False
+        if major_version == 1:
+            [hash_authenticators, payload_secretbox, *_] = packet
+        else:
+            [final_flag, hash_authenticators, payload_secretbox, *_] = packet
         hash_authenticator = hash_authenticators[recipient_index]
 
         # Verify the secretbox hash.
         payload_nonce = PAYLOAD_NONCE_PREFIX + chunknum.to_bytes(8, "big")
         debug('payload nonce:', payload_nonce)
+        if major_version == 1:
+            final_flag_byte = b""
+        else:
+            final_flag_byte = b"\x01" if final_flag else b"\x00"
         payload_hash = nacl.bindings.crypto_hash(
-            header_hash + payload_nonce + payload_secretbox)
+            header_hash + payload_nonce + final_flag_byte + payload_secretbox)
         debug('hash to authenticate:', payload_hash)
         hmac_digest = hmac.new(mac_key, digestmod=hashlib.sha512)
         hmac_digest.update(payload_hash)
@@ -235,8 +281,8 @@ def decrypt(input, recipient_private):
 
         debug('chunk:', repr(chunk))
 
-        # The empty chunk signifies the end of the message.
-        if chunk == b'':
+        # The empty chunk or the final flag signifies the end of the message.
+        if chunk == b'' or final_flag:
             break
 
         chunknum += 1
