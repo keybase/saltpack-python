@@ -15,26 +15,27 @@ could, to where it bent in the undergrowth."""
 
 
 def test_block():
-    blocked = sh('python -m saltpack block', input=inputstr).read()
+    blocked = sh('python -m saltpack block').input(inputstr).read()
     print(blocked)
-    unblocked = sh('python -m saltpack unblock', input=blocked).read()
+    unblocked = sh('python -m saltpack unblock').input(blocked).read()
     print(unblocked)
     assert inputstr == unblocked
 
 
 def test_armor():
-    encoded = sh('python -m saltpack armor', input=inputstr).read()
+    encoded = sh('python -m saltpack armor').input(inputstr).read()
     print(encoded)
-    decoded = sh('python -m saltpack dearmor', input=encoded).read()
+    decoded = sh('python -m saltpack dearmor').input(encoded).read()
     print(decoded)
     assert inputstr == decoded
 
 
 def test_armor_raw():
-    raw_encoded = sh('python -m saltpack armor --raw', input=inputstr).read()
+    raw_encoded = sh('python -m saltpack armor --raw').input(inputstr).read()
     print(raw_encoded)
-    raw_decoded = sh('python -m saltpack dearmor --raw',
-                     input=raw_encoded).read()
+    raw_decoded = sh('python -m saltpack dearmor --raw') \
+        .input(raw_encoded) \
+        .read()
     print(raw_decoded)
     assert inputstr == raw_decoded
 
@@ -50,9 +51,12 @@ message = "foo bar"
 
 def test_encryption():
     encrypted = sh("python -m saltpack encrypt") \
-                .read(input=message, decode=False)
+        .input(message) \
+        .read()
     print(encrypted)
-    decrypted = sh("python -m saltpack decrypt --debug").read(input=encrypted)
+    decrypted = sh("python -m saltpack decrypt --debug") \
+        .input(encrypted) \
+        .read()
     assert message == decrypted, repr(message) + " != " + repr(decrypted)
 
 
@@ -83,7 +87,8 @@ keybase_test_secret_key = \
 def test_decrypt_keybase_message():
     decrypted = cmd("python", "-m", "saltpack", "decrypt",
                     keybase_test_secret_key) \
-                .read(input=keybase_test_ciphertext)
+        .input(keybase_test_ciphertext) \
+        .read()
     assert decrypted == keybase_test_plaintext
 
 
@@ -137,7 +142,7 @@ def test_decrypt_bad_format():
 
 bad_version_message = (
     #                  badness here ↓
-    b'\xc4\x97\x96\xa8saltpack\x92\x02\x00\x00\xc4 \xf6\xa9\x9e\xe2\xac7\x8c.B'
+    b'\xc4\x97\x96\xa8saltpack\x92\xff\x00\x00\xc4 \xf6\xa9\x9e\xe2\xac7\x8c.B'
     b'o\x02-\x8b}^\xf0\x90\xee4_C\xeb\xc9\x842\x1fe\xbf\xd8\x18\x0bb\xc402\xe9'
     b'\xc6c\xcf;=;\xfd\x17\xc5\xc1\x04"\xa7\xc9\xe9\xb0*\xc2\xbfa\xa0<\xc4 T'
     b'\x7f\xc4-z\x8d\xa4\x07\xd6\xa1\xa1\xecP\xf5\x1b\n\xc2\xdc\x952\xf09\x91'
@@ -155,22 +160,25 @@ def test_decrypt_bad_version():
 
 
 def test_sign_attached():
-    signed = sh("python -m saltpack sign").read(input=message)
+    signed = sh("python -m saltpack sign").input(message).read()
     print(signed)
-    verified = sh("python -m saltpack verify --debug").read(input=signed)
+    verified = sh("python -m saltpack verify --debug").input(signed).read()
     assert message == verified, repr(message) + " != " + repr(verified)
 
 
 def test_sign_detached():
-    detached = sh("python -m saltpack sign --binary --detached").read(
-        input=message, decode=False)
+    detached = sh("python -m saltpack sign --binary --detached") \
+            .input(message) \
+            .stdout_capture() \
+            .run() \
+            .stdout
     print(detached)
     _, temp = tempfile.mkstemp()
     with open(temp, 'wb') as f:
         f.write(detached)
     command = ["python", "-m", "saltpack", "verify", "--signature", temp,
                "--binary", "--debug"]
-    cmd(*command).read(input=message)
+    cmd(*command).input(message).read()
 
 
 LOREM_IPSUM_FIRST_351 = ' '.join('''\
