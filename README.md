@@ -1,7 +1,7 @@
 [![Build Status](https://travis-ci.org/keybase/saltpack-python.svg?branch=master)](https://travis-ci.org/keybase/saltpack-python)
 
-A Python implementation of [saltpack](https://saltpack.org/). You can
-play with commands like:
+A Python implementation of [saltpack](https://saltpack.org/), mainly for
+testing and experimentation. You can play with commands like:
 
 ```
 saltpack encrypt -m "foo" | saltpack decrypt --debug
